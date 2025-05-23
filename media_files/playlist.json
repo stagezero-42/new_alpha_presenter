@@ -1,0 +1,15 @@
+{
+    "slides": [
+        {
+            "layers": [
+                "background_01.jpg",
+                "overlay_01.png"
+            ]
+        },
+        {
+            "layers": [
+                "background_02.jpg"
+            ]
+        }
+    ]
+}
