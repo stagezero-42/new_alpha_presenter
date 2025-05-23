@@ -1,0 +1,79 @@
+{
+    "slides": [
+        {
+            "comment": "Slide 1: Original - Two valid PNGs",
+            "layers": [
+                "dummy_image1.png",
+                "dummy_image2.png"
+            ]
+        },
+        {
+            "comment": "Slide 2: Original - One valid, one missing PNG",
+            "layers": [
+                "dummy_image1.png",
+                "missing_image.png"
+            ]
+        },
+        {
+            "comment": "Slide 3: Original - One valid PNG, one non-image file",
+            "layers": [
+                "dummy_image2.png",
+                "non_image_file.txt"
+            ]
+        },
+        {
+            "comment": "Slide 4: Original - Only one valid PNG",
+            "layers": [
+                "dummy_image1.png"
+            ]
+        },
+        {
+            "comment": "Slide 5: Original - No images",
+            "layers": []
+        },
+        {
+            "comment": "Slide 6: Valid JPG",
+            "layers": ["dummy_opaque.jpg"]
+        },
+        {
+            "comment": "Slide 7: Valid GIF (static)",
+            "layers": ["dummy_static.gif"]
+        },
+        {
+            "comment": "Slide 8: Valid BMP",
+            "layers": ["dummy_simple.bmp"]
+        },
+        {
+            "comment": "Slide 9: Valid SVG",
+            "layers": ["dummy_vector.svg"]
+        },
+        {
+            "comment": "Slide 10: Mixed valid types layering",
+            "layers": [
+                "dummy_opaque.jpg",
+                "dummy_transparent_partial.png",
+                "dummy_vector.svg"
+            ]
+        },
+        {
+            "comment": "Slide 11: Large and Tiny PNGs",
+            "layers": [
+                "dummy_large.png",
+                "dummy_tiny.png"
+            ]
+        },
+        {
+            "comment": "Slide 12: Corrupted JPG and a valid PNG",
+            "layers": [
+                "corrupted_image.jpg",
+                "dummy_image1.png"
+            ]
+        },
+        {
+            "comment": "Slide 13: PNG with partial transparency",
+            "layers": [
+                "dummy_transparent_partial.png"
+            ]
+        }
+    ]
+}
