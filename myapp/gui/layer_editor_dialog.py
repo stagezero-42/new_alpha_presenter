@@ -7,13 +7,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-
 class LayerEditorDialog(QDialog):
     def __init__(self, slide_layers, media_dir, display_window_instance, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Slide Layers")
-        self.slide_layers = list(slide_layers)  # Work on a copy
-        self.media_dir = media_dir  # Base directory for media (e.g., .../playlist_name_media_files/)
+        self.slide_layers = list(slide_layers)
+        self.media_dir = media_dir
         self.display_window = display_window_instance
         self.setMinimumSize(400, 500)
 
@@ -41,7 +40,6 @@ class LayerEditorDialog(QDialog):
         buttons_layout.addWidget(self.preview_button)
         main_layout.addLayout(buttons_layout)
 
-        # Ok and Cancel buttons
         ok_cancel_layout = QHBoxLayout()
         self.ok_button = QPushButton("OK")
         self.cancel_button = QPushButton("Cancel")
@@ -78,12 +76,10 @@ class LayerEditorDialog(QDialog):
 
                     if not os.path.exists(dest_path) or not os.path.samefile(file_path, dest_path):
                         shutil.copy2(file_path, dest_path)
-                        print(f"Copied {file_path} to {dest_path}")
 
-                    self.slide_layers.append(dest_file_name)  # Add relative path
+                    self.slide_layers.append(dest_file_name)
                 except Exception as e:
                     QMessageBox.critical(self, "File Copy Error", f"Could not copy {file_path}:\n{e}")
-                    # Continue with other files if one fails? Or stop? For now, continue.
             self.populate_layers_list()
 
     def remove_layer(self):
@@ -105,19 +101,15 @@ class LayerEditorDialog(QDialog):
             QMessageBox.warning(self, "Preview Error", "Media directory is not set. Cannot resolve layer paths.")
             return
 
-        # Update layers from the current list order before previewing
         self.update_internal_layers_from_widget()
-
-        print(f"Previewing slide with layers: {self.slide_layers} from base: {self.media_dir}")
         self.display_window.display_images(self.slide_layers, self.media_dir)
 
     def update_internal_layers_from_widget(self):
-        """Updates self.slide_layers based on the current order in QListWidget."""
         self.slide_layers = [self.layers_list_widget.item(i).text() for i in range(self.layers_list_widget.count())]
 
     def accept_changes(self):
         self.update_internal_layers_from_widget()
-        self.accept()  # QDialog.accept()
+        self.accept()
 
     def get_updated_layers(self):
         return self.slide_layers

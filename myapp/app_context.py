@@ -1,1 +1,0 @@
-# app_context.py: Defines an AppContext class to manage application-wide resources like logging and user feedback signals.
