@@ -1,14 +1,49 @@
 # myapp/settings/key_bindings.py
-from PySide6.QtGui import QKeySequence
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtCore import Qt
 
-def setup_keybindings(control_window):
-    from PySide6.QtGui import QShortcut # Import QShortcut inside the function
 
-    QShortcut(QKeySequence(Qt.Key.Key_Right), control_window, control_window.next_slide)
-    QShortcut(QKeySequence(Qt.Key.Key_Left), control_window, control_window.prev_slide)
-    QShortcut(QKeySequence(Qt.Key.Key_Space), control_window, control_window.start_or_go_slide)
-    QShortcut(QKeySequence(Qt.Key.Key_Escape), control_window, control_window.clear_display_screen)
-    QShortcut(QKeySequence("Ctrl+Q"), control_window, control_window.close_application)
-    QShortcut(QKeySequence("Ctrl+L"), control_window, control_window.load_playlist_dialog)
-    QShortcut(QKeySequence("Ctrl+E"), control_window, control_window.open_playlist_editor)
+def setup_keybindings(control_window, settings_manager):
+    """Sets up keybindings based on settings."""
+
+    # Get the keybindings dictionary (which will include the new defaults)
+    keybindings_config = settings_manager.get_setting("keybindings", {})
+
+    action_map = {
+        "next": control_window.next_slide,
+        "prev": control_window.prev_slide,
+        "go": control_window.start_or_go_slide,
+        "clear": control_window.clear_display_screen,
+        "quit": control_window.close_application,
+        "load": control_window.load_playlist_dialog,
+        "edit": control_window.open_playlist_editor
+    }
+
+    print("Setting up keybindings:")
+    for action_name, keys_list in keybindings_config.items():
+        if action_name in action_map and isinstance(keys_list, list):
+            for key_str in keys_list:
+                sequence = QKeySequence()  # Start with an empty sequence
+
+                # Try as a standard key sequence string
+                try:
+                    temp_sequence = QKeySequence(key_str)
+                    if not temp_sequence.isEmpty():
+                        sequence = temp_sequence
+                except Exception:
+                    pass
+
+                # "custom_key_map" logic is removed as we are not using it for now.
+                # If QKeySequence(key_str) fails, it remains empty.
+
+                if not sequence.isEmpty():
+                    try:
+                        shortcut = QShortcut(sequence, control_window)
+                        shortcut.activated.connect(action_map[action_name])
+                        print(f"  - Mapped '{key_str}' (Seq: {sequence.toString()}) to '{action_name}'")
+                    except Exception as e:
+                        print(f"  - Error creating shortcut for '{key_str}': {e}")
+                else:
+                    print(f"  - Warning: Could not parse key '{key_str}' for action '{action_name}'")
+        else:
+            print(f"  - Warning: Action '{action_name}' not found in action_map or keys not a list.")

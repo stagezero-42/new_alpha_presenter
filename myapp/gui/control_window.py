@@ -2,7 +2,7 @@
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QPushButton, QVBoxLayout, QWidget, QMessageBox,
-    QFileDialog, QListWidget, QListWidgetItem, QHBoxLayout
+    QFileDialog, QListWidget, QListWidgetItem, QHBoxLayout, QApplication # Import QApplication
 )
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QIcon
@@ -11,7 +11,8 @@ from .playlist_editor import PlaylistEditorWindow
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_icon_file_path, get_media_path, get_playlists_path
 from ..settings.settings_manager import SettingsManager
-from myapp.settings.key_bindings import setup_keybindings # Keep for now
+from myapp.settings.key_bindings import setup_keybindings
+
 
 class ControlWindow(QMainWindow):
     def __init__(self, display_window):
@@ -20,17 +21,18 @@ class ControlWindow(QMainWindow):
         self.display_window = display_window
         if not display_window: raise ValueError("DisplayWindow instance must be provided.")
 
-        self.settings_manager = SettingsManager()
-        self.playlist = Playlist() # Start with an empty one
+        self.settings_manager = SettingsManager()  # This is still needed here
+        self.playlist = Playlist()
         self.current_index = -1
         self.is_displaying = False
         self.editor_window = None
 
         self.setup_ui()
-        setup_keybindings(self)
+        setup_keybindings(self, self.settings_manager)  # setup_keybindings still uses it
         self.clear_display_screen()
-        self.load_last_playlist() # Try loading last used playlist
+        self.load_last_playlist()
 
+    # ... (setup_ui, load_last_playlist, toggle_display_window_visibility methods as before) ...
     def setup_ui(self):
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -41,7 +43,6 @@ class ControlWindow(QMainWindow):
         self.toggle_display_button = QPushButton("Show Display")
         self.close_button = QPushButton(" Close")
 
-        # Set Icons and Tooltips
         self.load_button.setIcon(QIcon(get_icon_file_path("load.png")))
         self.load_button.setToolTip("Load a playlist (Ctrl+L)")
         self.edit_button.setIcon(QIcon(get_icon_file_path("edit.png")))
@@ -76,9 +77,9 @@ class ControlWindow(QMainWindow):
         self.display_button.setIcon(QIcon(get_icon_file_path("play.png")))
         self.display_button.setToolTip("Display media or clear display (Space)")
         self.prev_button.setIcon(QIcon(get_icon_file_path("previous.png")))
-        self.prev_button.setToolTip("Previous slide (Left Arrow)")
+        self.prev_button.setToolTip("Previous slide (Arrow Keys, Page Up/Down)")
         self.next_button.setIcon(QIcon(get_icon_file_path("next.png")))
-        self.next_button.setToolTip("Next slide (Right Arrow)")
+        self.next_button.setToolTip("Next slide (Arrow Keys, Page Up/Down)")
         self.clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
         self.clear_button.setToolTip("Clear display (Esc)")
 
@@ -92,21 +93,10 @@ class ControlWindow(QMainWindow):
         playback_buttons_layout.addWidget(self.next_button)
         playback_buttons_layout.addWidget(self.clear_button)
         main_layout.addLayout(playback_buttons_layout)
-
         self.setCentralWidget(central_widget)
         self.resize(450, 600)
 
-    def load_last_playlist(self):
-        """Loads the playlist stored in settings, if it exists."""
-        last_playlist = self.settings_manager.get_current_playlist()
-        if last_playlist:
-            print(f"Loading last used playlist: {last_playlist}")
-            self.load_playlist(last_playlist)
-        else:
-            print("No last playlist found in settings.")
-
     def toggle_display_window_visibility(self):
-        """Shows or hides the entire display window."""
         if self.display_window:
             if self.display_window.isVisible():
                 self.display_window.hide()
@@ -121,7 +111,8 @@ class ControlWindow(QMainWindow):
         if self.editor_window is None or not self.editor_window.isVisible():
             self.editor_window = PlaylistEditorWindow(
                 display_window_instance=self.display_window,
-                playlist_obj=self.playlist, # Pass the current Playlist object
+                playlist_obj=self.playlist,
+                # settings_manager=self.settings_manager, # Removed
                 parent=self
             )
             self.editor_window.playlist_saved_signal.connect(self.handle_playlist_saved_by_editor)
@@ -130,8 +121,16 @@ class ControlWindow(QMainWindow):
             self.editor_window.activateWindow()
             self.editor_window.raise_()
 
+    # ... (rest of ControlWindow methods as before, ensure close_application, closeEvent, load_last_playlist etc. are there) ...
+    def load_last_playlist(self):
+        last_playlist = self.settings_manager.get_current_playlist()
+        if last_playlist:
+            print(f"Loading last used playlist: {last_playlist}")
+            self.load_playlist(last_playlist)
+        else:
+            print("No last playlist found in settings.")
+
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
-        """Reloads the playlist when editor saves it."""
         print(f"ControlWindow received signal to reload: {saved_playlist_path}")
         self.load_playlist(saved_playlist_path)
 
@@ -142,7 +141,7 @@ class ControlWindow(QMainWindow):
             item_text = f"Slide {i + 1}: {layers_str if layers_str else '[Empty Slide]'}"
             item = QListWidgetItem(item_text)
             self.playlist_view.addItem(item)
-        self.update_list_selection() # Ensure selection matches index
+        self.update_list_selection()
 
     def load_playlist_dialog(self):
         default_dir = get_playlists_path()
@@ -159,31 +158,28 @@ class ControlWindow(QMainWindow):
             self.is_displaying = False
             self.populate_playlist_view()
             self.clear_display_screen()
-            self.settings_manager.set_current_playlist(file_path) # Save as last used
+            self.settings_manager.set_current_playlist(file_path)
             print(f"Loaded: {file_path}")
         except (FileNotFoundError, ValueError) as e:
             QMessageBox.critical(self, "Error", str(e))
-            self.playlist = Playlist() # Reset
+            self.playlist = Playlist()
             self.current_index = -1
             self.is_displaying = False
             self.populate_playlist_view()
             self.clear_display_screen()
-            self.settings_manager.set_current_playlist(None) # Clear last used
+            self.settings_manager.set_current_playlist(None)
 
     def start_or_go_slide(self):
         if self.is_displaying:
             self.clear_display_screen()
             return
-
         slides = self.playlist.get_slides()
-        if not slides: return # Don't auto-load here, force user
-
+        if not slides: return
         selected_row = self.playlist_view.currentRow()
         if 0 <= selected_row < len(slides):
             self.current_index = selected_row
         elif not (0 <= self.current_index < len(slides)):
             self.current_index = 0
-
         self.update_display()
 
     def go_to_selected_slide_from_list(self, item):
@@ -200,10 +196,8 @@ class ControlWindow(QMainWindow):
 
     def update_display(self):
         if self.display_window and not self.display_window.isVisible():
-            self.toggle_display_window_visibility() # Show if hidden
-
+            self.toggle_display_window_visibility()
         slide_data = self.playlist.get_slide(self.current_index)
-
         if slide_data:
             self.is_displaying = True
             image_filenames = slide_data.get("layers", [])
@@ -236,11 +230,24 @@ class ControlWindow(QMainWindow):
         self.is_displaying = False
 
     def close_application(self):
+        print("Attempting to close application...")
         if self.editor_window and self.editor_window.isVisible():
-            if not self.editor_window.close(): return
+            if not self.editor_window.close():
+                print("Editor close cancelled, aborting application close.")
+                return
+        if self.display_window:
+            print("Closing display window...")
+            self.display_window.close()
+        print("Closing control window...")
+        self.close()
+        print("Quitting QApplication instance.")
         QCoreApplication.instance().quit()
 
     def closeEvent(self, event):
-        if self.display_window:
+        print("ControlWindow closeEvent triggered.")
+        if self.display_window and self.display_window.isVisible():
             self.display_window.close()
+        if self.editor_window and self.editor_window.isVisible():
+            self.editor_window.close()
         super().closeEvent(event)
+        print("ControlWindow closeEvent finished.")

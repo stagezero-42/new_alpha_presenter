@@ -9,18 +9,22 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 
 from .layer_editor_dialog import LayerEditorDialog
+# KeybindingsEditorDialog is no longer imported
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_playlists_path, get_icon_file_path, get_media_path
+# SettingsManager is no longer imported here
 
 class PlaylistEditorWindow(QMainWindow):
     playlist_saved_signal = Signal(str)
 
+    # --- MODIFIED: Removed settings_manager ---
     def __init__(self, display_window_instance, playlist_obj, parent=None):
         super().__init__(parent)
         self.base_title = "Playlist Editor"
         self.display_window = display_window_instance
-        self.playlist = playlist_obj # Use the passed Playlist object
-        self.playlists_base_dir = get_playlists_path() # Get central playlists path
+        self.playlist = playlist_obj
+        # self.settings_manager = settings_manager # Removed
+        self.playlists_base_dir = get_playlists_path()
 
         self.setWindowTitle(f"{self.base_title} [*]")
         self.setGeometry(100, 100, 700, 600)
@@ -38,18 +42,21 @@ class PlaylistEditorWindow(QMainWindow):
         self.load_button = QPushButton(" Load")
         self.save_button = QPushButton(" Save")
         self.save_as_button = QPushButton(" Save As...")
+        # self.settings_button = QPushButton(" Settings") # Removed
         self.done_button = QPushButton(" Done")
 
         self.new_button.setIcon(QIcon(get_icon_file_path("new.png")))
         self.load_button.setIcon(QIcon(get_icon_file_path("load.png")))
         self.save_button.setIcon(QIcon(get_icon_file_path("save.png")))
-        self.save_as_button.setIcon(QIcon(get_icon_file_path("save.png"))) # Can use same
-        self.done_button.setIcon(QIcon(get_icon_file_path("close.png")))
+        self.save_as_button.setIcon(QIcon(get_icon_file_path("save.png")))
+        # self.settings_button.setIcon(QIcon(get_icon_file_path("settings.png"))) # Removed
+        self.done_button.setIcon(QIcon(get_icon_file_path("done.png")))
 
         self.new_button.clicked.connect(self.new_playlist)
         self.load_button.clicked.connect(self.load_playlist_dialog)
         self.save_button.clicked.connect(self.save_playlist)
         self.save_as_button.clicked.connect(self.save_playlist_as)
+        # self.settings_button.clicked.connect(self.open_keybindings_editor) # Removed
         self.done_button.clicked.connect(self.close)
 
         toolbar_layout.addWidget(self.new_button)
@@ -57,9 +64,11 @@ class PlaylistEditorWindow(QMainWindow):
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
+        # toolbar_layout.addWidget(self.settings_button) # Removed
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
+        # ... (rest of setup_ui as before, specifically the list and slide controls) ...
         self.playlist_list = QListWidget()
         self.playlist_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.playlist_list.itemDoubleClicked.connect(self.edit_slide_layers_dialog)
@@ -86,9 +95,11 @@ class PlaylistEditorWindow(QMainWindow):
         slide_controls_layout.addWidget(self.preview_slide_button)
         slide_controls_layout.addWidget(self.remove_slide_button)
         main_layout.addLayout(slide_controls_layout)
-
         self.setCentralWidget(central_widget)
 
+    # open_keybindings_editor method is removed
+
+    # ... (rest of PlaylistEditorWindow methods as before) ...
     def mark_dirty(self, dirty=True):
         self.setWindowModified(dirty)
 
@@ -98,7 +109,7 @@ class PlaylistEditorWindow(QMainWindow):
             title += f" - {os.path.basename(self.playlist.file_path)}"
         else:
             title += " - Untitled"
-        title += " [*]" # Shows modification status
+        title += " [*]"
         self.setWindowTitle(title)
 
     def populate_list(self):
@@ -107,11 +118,10 @@ class PlaylistEditorWindow(QMainWindow):
             layers_str = ", ".join(slide.get("layers", []))
             item_text = f"Slide {i + 1}: {layers_str if layers_str else '[Empty Slide]'}"
             item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, slide) # Store data with item
+            item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(item)
 
     def update_playlist_from_list_order(self):
-        """Syncs the internal playlist order with the QListWidget order."""
         new_slides = [self.playlist_list.item(i).data(Qt.ItemDataRole.UserRole)
                       for i in range(self.playlist_list.count())]
         self.playlist.set_slides(new_slides)
@@ -138,9 +148,9 @@ class PlaylistEditorWindow(QMainWindow):
         current_item = self.playlist_list.currentItem()
         if not current_item: return
         row = self.playlist_list.row(current_item)
-        self.playlist_list.takeItem(row) # Remove from list
-        self.update_playlist_from_list_order() # Re-sync internal data
-        self.populate_list() # Repopulate to fix numbering
+        self.playlist_list.takeItem(row)
+        self.update_playlist_from_list_order()
+        self.populate_list()
 
     def edit_selected_slide_layers(self):
         current_item = self.playlist_list.currentItem()
@@ -150,7 +160,7 @@ class PlaylistEditorWindow(QMainWindow):
     def edit_slide_layers_dialog(self, item):
         row = self.playlist_list.row(item)
         slide_data = self.playlist.get_slide(row)
-        if not slide_data: return # Should not happen
+        if not slide_data: return
 
         editor = LayerEditorDialog(slide_data.get("layers", []), self.display_window, self)
         if editor.exec():
@@ -182,7 +192,7 @@ class PlaylistEditorWindow(QMainWindow):
                 self.populate_list()
                 self.update_title()
                 self.mark_dirty(False)
-                self.playlist_saved_signal.emit(file_name) # Notify ControlWindow
+                self.playlist_saved_signal.emit(file_name)
             except (FileNotFoundError, ValueError) as e:
                 QMessageBox.critical(self, "Load Error", f"Failed to load playlist: {e}")
 
