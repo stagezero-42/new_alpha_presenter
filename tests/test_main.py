@@ -36,7 +36,9 @@ def test_setup_windows_single_screen(MockControlWindow, MockMediaRenderer, mock_
 
     MockMediaRenderer.assert_called_once()
     display_win_mock_instance.setGeometry.assert_called_once_with(QRect(0, 0, 1920, 1080))
-    display_win_mock_instance.showFullScreen.assert_called_once()
+    # --- MODIFIED: Assert NOT called ---
+    display_win_mock_instance.showFullScreen.assert_not_called()
+    # --- END MODIFIED ---
     assert returned_display_win is display_win_mock_instance
 
     MockControlWindow.assert_called_once_with(display_win_mock_instance)
@@ -58,7 +60,9 @@ def test_setup_windows_dual_screen(MockControlWindow, MockMediaRenderer, mock_qa
 
     MockMediaRenderer.assert_called_once()
     display_win_mock_instance.setGeometry.assert_called_once_with(QRect(1920, 0, 1280, 720))
-    display_win_mock_instance.showFullScreen.assert_called_once()
+    # --- MODIFIED: Assert NOT called ---
+    display_win_mock_instance.showFullScreen.assert_not_called()
+    # --- END MODIFIED ---
     assert returned_display_win is display_win_mock_instance
 
     MockControlWindow.assert_called_once_with(display_win_mock_instance)

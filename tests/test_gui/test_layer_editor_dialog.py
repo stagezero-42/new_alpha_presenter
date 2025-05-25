@@ -2,11 +2,12 @@
 import pytest
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch # Make sure patch is imported
 from PySide6.QtWidgets import QApplication
-from myapp.gui.layer_editor_dialog import LayerEditorDialog
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from myapp.gui.layer_editor_dialog import LayerEditorDialog
 
 @pytest.fixture(scope="session")
 def qapp():
@@ -17,10 +18,17 @@ def qapp():
 
 @pytest.fixture
 def layer_editor(qapp, tmp_path):
+    """Creates a LayerEditorDialog instance with mocked paths."""
     media_dir = tmp_path / "media"
     media_dir.mkdir()
-    dialog = LayerEditorDialog([], media_dir, MagicMock())
+
+    # --- MODIFIED: Patch paths and call __init__ correctly ---
+    with patch('myapp.gui.layer_editor_dialog.get_media_path', return_value=str(media_dir)):
+        with patch('myapp.gui.layer_editor_dialog.get_icon_file_path', return_value="dummy_icon.png"):
+             # Call with (slide_layers, display_window_instance, parent)
+             dialog = LayerEditorDialog([], MagicMock(), None)
     return dialog
+    # --- END MODIFIED ---
 
 def test_layer_editor_creation(layer_editor):
     assert layer_editor is not None
@@ -34,5 +42,5 @@ def test_add_layers_copies_files(mock_get_open_file_names, layer_editor, tmp_pat
 
     layer_editor.add_layers()
 
-    assert os.path.exists(os.path.join(layer_editor.media_dir, "test_image.png"))
+    assert os.path.exists(os.path.join(layer_editor.media_path, "test_image.png"))
     assert "test_image.png" in layer_editor.slide_layers
