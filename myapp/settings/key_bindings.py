@@ -12,7 +12,7 @@ def setup_keybindings(control_window, settings_manager):
     action_map = {
         "next": control_window.next_slide,
         "prev": control_window.prev_slide,
-        "go": control_window.start_or_go_slide,
+        "go": control_window.handle_show_clear_click,
         "clear": control_window.clear_display_screen,
         "quit": control_window.close_application,
         "load": control_window.load_playlist_dialog,
