@@ -2,22 +2,30 @@
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QPushButton, QVBoxLayout, QWidget, QMessageBox,
-    QFileDialog, QListWidget, QListWidgetItem, QHBoxLayout, QApplication
+    QFileDialog, QListWidget, QListWidgetItem, QHBoxLayout, QApplication,
+    QListView, QAbstractItemView
 )
-from PySide6.QtCore import QCoreApplication
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QCoreApplication, QSize, Qt
+# --- MODIFIED: Added QPainter ---
+from PySide6.QtGui import QIcon, QPixmap, QPainter
+# --- END MODIFIED ---
 
 from .playlist_editor import PlaylistEditorWindow
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_icon_file_path, get_media_path, get_playlists_path
 from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
+from myapp import __version__
+
+# Define a fixed size for thumbnails
+THUMBNAIL_WIDTH = 120
+THUMBNAIL_HEIGHT = 90
 
 
 class ControlWindow(QMainWindow):
     def __init__(self, display_window):
         super().__init__()
-        self.setWindowTitle("Control Window")
+        self.setWindowTitle(f"Control Window v{__version__}")
         self.display_window = display_window
         if not display_window: raise ValueError("DisplayWindow instance must be provided.")
 
@@ -29,7 +37,7 @@ class ControlWindow(QMainWindow):
 
         self.setup_ui()
         setup_keybindings(self, self.settings_manager)
-        self.update_show_clear_button_state()  # Initial state
+        self.update_show_clear_button_state()
         self.clear_display_screen()
         self.load_last_playlist()
 
@@ -64,42 +72,41 @@ class ControlWindow(QMainWindow):
         main_layout.addLayout(playlist_buttons_layout)
 
         self.playlist_view = QListWidget()
+        self.playlist_view.setViewMode(QListView.ViewMode.IconMode)
+        self.playlist_view.setFlow(QListView.Flow.LeftToRight)
+        self.playlist_view.setMovement(QListView.Movement.Static)
+        self.playlist_view.setResizeMode(QListView.ResizeMode.Adjust)
+        self.playlist_view.setWrapping(False)
+        self.playlist_view.setIconSize(QSize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+        self.playlist_view.setSpacing(10)
+        self.playlist_view.setFixedHeight(THUMBNAIL_HEIGHT + 40)
+
         self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
         main_layout.addWidget(self.playlist_view)
 
         playback_buttons_layout = QHBoxLayout()
-        # --- MODIFIED: Combine Display/Go and Clear buttons ---
-        self.show_clear_button = QPushButton()  # Text and icon set dynamically
+        self.show_clear_button = QPushButton()
         self.show_clear_button.clicked.connect(self.handle_show_clear_click)
-        # --- END MODIFIED ---
 
         self.prev_button = QPushButton(" Prev")
-        self.next_button = QPushButton(" Next")
-
         self.prev_button.setIcon(QIcon(get_icon_file_path("previous.png")))
         self.prev_button.setToolTip("Previous slide (Arrow Keys, Page Up/Down)")
+        self.prev_button.clicked.connect(self.prev_slide)
+
+        self.next_button = QPushButton(" Next")
         self.next_button.setIcon(QIcon(get_icon_file_path("next.png")))
         self.next_button.setToolTip("Next slide (Arrow Keys, Page Up/Down)")
-
-        # --- ADD THESE LINES BACK ---
-        self.prev_button.clicked.connect(self.prev_slide)
         self.next_button.clicked.connect(self.next_slide)
-        # --- END ADD THESE LINES BACK ---
 
-
-        # --- MODIFIED: Add the new combined button, remove old ones ---
         playback_buttons_layout.addWidget(self.show_clear_button)
-        # self.display_button and self.clear_button are removed
-        # --- END MODIFIED ---
         playback_buttons_layout.addWidget(self.prev_button)
         playback_buttons_layout.addWidget(self.next_button)
         main_layout.addLayout(playback_buttons_layout)
 
         self.setCentralWidget(central_widget)
-        self.resize(450, 600)
+        self.resize(600, 300)
 
-    # --- NEW METHOD ---
     def update_show_clear_button_state(self):
         if self.is_displaying:
             self.show_clear_button.setText(" Clear")
@@ -110,16 +117,11 @@ class ControlWindow(QMainWindow):
             self.show_clear_button.setIcon(QIcon(get_icon_file_path("play.png")))
             self.show_clear_button.setToolTip("Show the selected slide (Space)")
 
-    # --- END NEW METHOD ---
-
-    # --- NEW METHOD to handle the combined button's click ---
     def handle_show_clear_click(self):
         if self.is_displaying:
             self.clear_display_screen()
         else:
-            self.start_or_go_slide()  # This is the old "Display/Go" logic
-
-    # --- END NEW METHOD ---
+            self.start_or_go_slide()
 
     def toggle_display_window_visibility(self):
         if self.display_window:
@@ -137,7 +139,6 @@ class ControlWindow(QMainWindow):
             self.editor_window = PlaylistEditorWindow(
                 display_window_instance=self.display_window,
                 playlist_obj=self.playlist,
-                # settings_manager removed from PlaylistEditorWindow constructor
                 parent=self
             )
             self.editor_window.playlist_saved_signal.connect(self.handle_playlist_saved_by_editor)
@@ -152,11 +153,44 @@ class ControlWindow(QMainWindow):
 
     def populate_playlist_view(self):
         self.playlist_view.clear()
+        media_base_path = get_media_path()
+
         for i, slide_data in enumerate(self.playlist.get_slides()):
-            layers_str = ", ".join(slide_data.get("layers", []))
-            item_text = f"Slide {i + 1}: {layers_str if layers_str else '[Empty Slide]'}"
+            item_text = f"Slide {i + 1}"
             item = QListWidgetItem(item_text)
+
+            layers = slide_data.get("layers", [])
+            # Use a generic variable name for the pixmap we are drawing onto
+            thumbnail_canvas = QPixmap(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+            thumbnail_canvas.fill(Qt.GlobalColor.lightGray)
+
+            if layers:
+                first_image_filename = layers[0]
+                image_path = os.path.join(media_base_path, first_image_filename)
+                if os.path.exists(image_path):
+                    original_pixmap = QPixmap(image_path)
+                    if not original_pixmap.isNull():
+                        scaled_pixmap = original_pixmap.scaled(
+                            THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        # The QPixmap to draw on is 'thumbnail_canvas'
+                        thumbnail_canvas.fill(Qt.GlobalColor.darkGray)
+
+                        x = (THUMBNAIL_WIDTH - scaled_pixmap.width()) / 2
+                        y = (THUMBNAIL_HEIGHT - scaled_pixmap.height()) / 2
+
+                        # Create QPainter for the thumbnail_canvas
+                        painter_on_canvas = QPainter(thumbnail_canvas)
+                        painter_on_canvas.drawPixmap(int(x), int(y), scaled_pixmap)
+                        painter_on_canvas.end()
+                        # thumbnail_canvas now has the image drawn on it
+
+            item.setIcon(QIcon(thumbnail_canvas))  # Use the canvas we drew on
+            item.setData(Qt.ItemDataRole.UserRole, i)
             self.playlist_view.addItem(item)
+
         self.update_list_selection()
 
     def load_playlist_dialog(self):
@@ -171,9 +205,9 @@ class ControlWindow(QMainWindow):
         try:
             self.playlist.load(file_path)
             self.current_index = 0 if self.playlist.get_slides() else -1
-            self.is_displaying = False  # Reset display state on new load
+            self.is_displaying = False
             self.populate_playlist_view()
-            self.clear_display_screen()  # This will update the button state
+            self.clear_display_screen()
             self.settings_manager.set_current_playlist(file_path)
             print(f"Loaded: {file_path}")
         except (FileNotFoundError, ValueError) as e:
@@ -182,7 +216,7 @@ class ControlWindow(QMainWindow):
             self.current_index = -1
             self.is_displaying = False
             self.populate_playlist_view()
-            self.clear_display_screen()  # This will update the button state
+            self.clear_display_screen()
             self.settings_manager.set_current_playlist(None)
 
     def load_last_playlist(self):
@@ -192,37 +226,30 @@ class ControlWindow(QMainWindow):
             self.load_playlist(last_playlist)
         else:
             print("No last playlist found in settings.")
-            self.clear_display_screen()  # Ensure button is in "Show" state if no playlist
+            self.clear_display_screen()
 
     def start_or_go_slide(self):
-        # This method is now solely for STARTING or GOING to a slide
-        # The toggling to "clear" is handled by handle_show_clear_click
         slides = self.playlist.get_slides()
         if not slides:
             QMessageBox.information(self, "No Playlist", "Load a playlist to show a slide.")
             return
 
-        selected_row = self.playlist_view.currentRow()
-        if 0 <= selected_row < len(slides):
-            self.current_index = selected_row
-        elif not (0 <= self.current_index < len(slides)):  # If current index is invalid
-            self.current_index = 0  # Default to first slide
-        # If current_index is already valid, we use it
+        current_item = self.playlist_view.currentItem()
+        if current_item:
+            self.current_index = current_item.data(Qt.ItemDataRole.UserRole)
+        elif not (0 <= self.current_index < len(slides)):
+            self.current_index = 0
 
-        self.update_display()  # This will set is_displaying and update button
+        self.update_display()
 
-    def go_to_selected_slide_from_list(self, item):
-        row = self.playlist_view.row(item)
-        if 0 <= row < len(self.playlist.get_slides()):
-            self.current_index = row
-            self.update_display()  # This will set is_displaying and update button
+    def go_to_selected_slide_from_list(self, item: QListWidgetItem):
+        if item:
+            self.current_index = item.data(Qt.ItemDataRole.UserRole)
+            self.update_display()
 
-    def handle_list_selection(self, current_qlistwidget_item, previous_qlistwidget_item):
-        if current_qlistwidget_item:
-            row = self.playlist_view.row(current_qlistwidget_item)
-            if 0 <= row < len(self.playlist.get_slides()):
-                self.current_index = row
-                # Do not auto-display, just update the index
+    def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
+        if current_item:
+            self.current_index = current_item.data(Qt.ItemDataRole.UserRole)
 
     def update_display(self):
         if self.display_window and not self.display_window.isVisible():
@@ -236,14 +263,19 @@ class ControlWindow(QMainWindow):
             self.display_window.display_images(image_filenames, get_media_path())
             self.update_list_selection()
         else:
-            self.is_displaying = False  # Ensure state is correct if no slide data
-            self.display_window.clear_display()  # Clear if no slide data
+            self.is_displaying = False
+            if self.display_window: self.display_window.clear_display()
 
-        self.update_show_clear_button_state()  # Update button based on new state
+        self.update_show_clear_button_state()
 
     def update_list_selection(self):
         if 0 <= self.current_index < self.playlist_view.count():
-            self.playlist_view.setCurrentRow(self.current_index)
+            for i in range(self.playlist_view.count()):
+                item = self.playlist_view.item(i)
+                if item.data(Qt.ItemDataRole.UserRole) == self.current_index:
+                    self.playlist_view.setCurrentItem(item)
+                    self.playlist_view.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+                    break
 
     def next_slide(self):
         slides = self.playlist.get_slides()
@@ -251,7 +283,7 @@ class ControlWindow(QMainWindow):
         if self.current_index < len(slides) - 1:
             self.current_index += 1
             self.update_display()
-        elif self.is_displaying:  # Only print if something is actually showing
+        elif self.is_displaying:
             print("End of playlist reached.")
 
     def prev_slide(self):
@@ -260,14 +292,14 @@ class ControlWindow(QMainWindow):
         if self.current_index > 0:
             self.current_index -= 1
             self.update_display()
-        elif self.is_displaying:  # Only print if something is actually showing
+        elif self.is_displaying:
             print("Beginning of playlist reached.")
 
     def clear_display_screen(self):
         if self.display_window:
             self.display_window.clear_display()
         self.is_displaying = False
-        self.update_show_clear_button_state()  # Update button after clearing
+        self.update_show_clear_button_state()
         print("Display cleared by ControlWindow.")
 
     def close_application(self):
