@@ -5,8 +5,8 @@ from PySide6.QtWidgets import (
     QFileDialog, QListWidget, QListWidgetItem, QHBoxLayout, QApplication,
     QListView, QAbstractItemView
 )
-from PySide6.QtCore import QCoreApplication, QSize, Qt, QTimer
-from PySide6.QtGui import QIcon, QPixmap, QPainter
+from PySide6.QtCore import QCoreApplication, QSize, Qt, QTimer, QPoint
+from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor  # Added QColor
 
 from .playlist_editor import PlaylistEditorWindow
 from ..playlist.playlist import Playlist
@@ -15,8 +15,16 @@ from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
 from myapp import __version__
 
-THUMBNAIL_WIDTH = 120
-THUMBNAIL_HEIGHT = 90
+# Define sizes for the composite thumbnail
+THUMBNAIL_IMAGE_WIDTH = 120  # Width of the actual image part
+THUMBNAIL_IMAGE_HEIGHT = 90  # Height of the actual image part
+INDICATOR_AREA_HEIGHT = 25  # Height of the area below for icons & text
+INDICATOR_ICON_SIZE = 16  # Size of small status icons (timer, loop)
+TOTAL_ICON_WIDTH = THUMBNAIL_IMAGE_WIDTH
+TOTAL_ICON_HEIGHT = THUMBNAIL_IMAGE_HEIGHT + INDICATOR_AREA_HEIGHT
+
+# Height for the QListWidget itself
+LIST_WIDGET_HEIGHT = TOTAL_ICON_HEIGHT + 25  # Total icon height + item padding
 
 
 class ControlWindow(QMainWindow):
@@ -34,7 +42,24 @@ class ControlWindow(QMainWindow):
 
         self.slide_timer = QTimer(self)
         self.slide_timer.setSingleShot(True)
-        self.slide_timer.timeout.connect(self.auto_advance_or_loop_slide)  # MODIFIED: Connect to new handler
+        self.slide_timer.timeout.connect(self.auto_advance_or_loop_slide)
+
+        # Pre-load indicator icons as QPixmaps
+        try:
+            self.pix_slide_indicator = QPixmap(get_icon_file_path("slide_icon.png")).scaled(
+                INDICATOR_ICON_SIZE, INDICATOR_ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            self.pix_timer_indicator = QPixmap(get_icon_file_path("timer_icon.png")).scaled(
+                INDICATOR_ICON_SIZE, INDICATOR_ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            self.pix_loop_indicator = QPixmap(get_icon_file_path("loop_icon.png")).scaled(
+                INDICATOR_ICON_SIZE, INDICATOR_ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+        except Exception as e:
+            print(f"Warning: Could not load all indicator icons: {e}")
+            self.pix_slide_indicator = QPixmap()  # Empty pixmap as fallback
+            self.pix_timer_indicator = QPixmap()
+            self.pix_loop_indicator = QPixmap()
 
         self.setup_ui()
         setup_keybindings(self, self.settings_manager)
@@ -42,7 +67,6 @@ class ControlWindow(QMainWindow):
         self.clear_display_screen()
         self.load_last_playlist()
 
-    # ... (setup_ui and other UI methods as before) ...
     def setup_ui(self):
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -79,9 +103,13 @@ class ControlWindow(QMainWindow):
         self.playlist_view.setMovement(QListView.Movement.Static)
         self.playlist_view.setResizeMode(QListView.ResizeMode.Adjust)
         self.playlist_view.setWrapping(False)
-        self.playlist_view.setIconSize(QSize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
-        self.playlist_view.setSpacing(10)
-        self.playlist_view.setFixedHeight(THUMBNAIL_HEIGHT + 40)
+
+        self.playlist_view.setIconSize(QSize(TOTAL_ICON_WIDTH, TOTAL_ICON_HEIGHT))  # Use total size
+
+        self.playlist_view.setSpacing(5)  # Reduced spacing a bit
+        self.playlist_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.playlist_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.playlist_view.setFixedHeight(LIST_WIDGET_HEIGHT)  # Use calculated height
 
         self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
@@ -107,10 +135,114 @@ class ControlWindow(QMainWindow):
         main_layout.addLayout(playback_buttons_layout)
 
         self.setCentralWidget(central_widget)
-        self.resize(600, 300)
+        self.resize(600, 350)
 
-        # --- RENAMED and MODIFIED: auto_advance_slide to handle loop ---
+    def create_composite_thumbnail(self, slide_data, slide_index):
+        media_base_path = get_media_path()
 
+        canvas_pixmap = QPixmap(TOTAL_ICON_WIDTH, TOTAL_ICON_HEIGHT)
+        canvas_pixmap.fill(Qt.GlobalColor.transparent)  # Start with transparent
+
+        painter = QPainter(canvas_pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        # 1. Draw the main image thumbnail
+        image_part_pixmap = QPixmap(THUMBNAIL_IMAGE_WIDTH, THUMBNAIL_IMAGE_HEIGHT)
+        image_part_pixmap.fill(Qt.GlobalColor.darkGray)  # Background for the image part
+
+        layers = slide_data.get("layers", [])
+        if layers:
+            first_image_filename = layers[0]
+            image_path = os.path.join(media_base_path, first_image_filename)
+            if os.path.exists(image_path):
+                original_pixmap = QPixmap(image_path)
+                if not original_pixmap.isNull():
+                    scaled_pixmap = original_pixmap.scaled(
+                        THUMBNAIL_IMAGE_WIDTH, THUMBNAIL_IMAGE_HEIGHT,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
+                    # Center the scaled image onto image_part_pixmap
+                    x_img = (THUMBNAIL_IMAGE_WIDTH - scaled_pixmap.width()) / 2
+                    y_img = (THUMBNAIL_IMAGE_HEIGHT - scaled_pixmap.height()) / 2
+
+                    temp_painter = QPainter(image_part_pixmap)  # Paint on the image_part_pixmap
+                    temp_painter.drawPixmap(QPoint(int(x_img), int(y_img)), scaled_pixmap)
+                    temp_painter.end()
+
+        painter.drawPixmap(0, 0, image_part_pixmap)
+
+        # 2. Draw indicator area below the image thumbnail
+        indicator_y_start = THUMBNAIL_IMAGE_HEIGHT + 2  # Small gap
+        current_x = 5  # Starting X for indicators & text
+
+        # Set font for text (slide number)
+        font = painter.font()
+        font.setPointSize(9)  # Adjust as needed
+        painter.setFont(font)
+        painter.setPen(QColor(Qt.GlobalColor.black))  # Text color
+
+        # Draw Slide Icon + Number
+        if not self.pix_slide_indicator.isNull():
+            painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2,
+                               self.pix_slide_indicator)
+        current_x += INDICATOR_ICON_SIZE + 2
+
+        slide_num_text = str(slide_index + 1)
+        text_rect = painter.fontMetrics().boundingRect(slide_num_text)
+        painter.drawText(current_x, indicator_y_start + (
+                    INDICATOR_AREA_HEIGHT - text_rect.height()) // 2 + text_rect.height() - painter.fontMetrics().descent(),
+                         slide_num_text)
+        current_x += text_rect.width() + 7  # Add more spacing after number
+
+        duration = slide_data.get("duration", 0)
+        loop_target = slide_data.get("loop_to_slide", 0)
+
+        if duration > 0:
+            if not self.pix_timer_indicator.isNull():
+                painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2,
+                                   self.pix_timer_indicator)
+            current_x += INDICATOR_ICON_SIZE + 7
+
+        if loop_target > 0 and duration > 0:
+            if not self.pix_loop_indicator.isNull():
+                painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2,
+                                   self.pix_loop_indicator)
+            # current_x += INDICATOR_ICON_SIZE + 2 # No text after loop icon
+
+        painter.end()
+        return QIcon(canvas_pixmap)
+
+    def populate_playlist_view(self):
+        self.playlist_view.clear()
+        for i, slide_data in enumerate(self.playlist.get_slides()):
+
+            composite_icon = self.create_composite_thumbnail(slide_data, i)
+            item = QListWidgetItem(composite_icon, "")  # Set composite icon, item text is empty
+
+            tooltip_parts = [f"Slide {i + 1}"]
+            duration = slide_data.get("duration", 0)
+            loop_target = slide_data.get("loop_to_slide", 0)
+
+            if duration > 0:
+                tooltip_parts.append(f"Plays for: {duration}s")
+            else:
+                tooltip_parts.append("Manual advance")
+
+            if loop_target > 0:
+                if duration > 0:
+                    tooltip_parts.append(f"Loops to: Slide {loop_target}")
+                else:
+                    tooltip_parts.append(f"Loop to Slide {loop_target} (inactive due to 0s duration)")
+
+            item.setToolTip("\n".join(tooltip_parts))
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.playlist_view.addItem(item)
+
+        self.update_list_selection()
+
+    # ... (rest of the methods: auto_advance_or_loop_slide, update_show_clear_button_state, etc., remain the same as your last working version)
     def auto_advance_or_loop_slide(self):
         print("Timer triggered.")
         if not self.is_displaying:
@@ -126,36 +258,27 @@ class ControlWindow(QMainWindow):
         loop_target_1_based = current_slide_data.get("loop_to_slide", 0)
         duration = current_slide_data.get("duration", 0)
 
-        # Condition: Loop only if duration > 0 and loop_target is valid
         if duration > 0 and loop_target_1_based > 0:
-            loop_target_0_based = loop_target_1_based - 1  # Convert to 0-based index
+            loop_target_0_based = loop_target_1_based - 1
 
-            # Validate loop target: not itself, within playlist bounds
             if loop_target_0_based == self.current_index:
                 print(f"Slide {self.current_index + 1} loops to itself. Ignoring loop, proceeding to next if not last.")
-                # Fall through to normal advance logic
             elif 0 <= loop_target_0_based < num_slides:
                 print(f"Looping from slide {self.current_index + 1} to slide {loop_target_1_based}.")
                 self.current_index = loop_target_0_based
-                self.update_display()  # This will restart timer for the new slide
-                return  # Loop executed
+                self.update_display()
+                return
             else:
                 print(
                     f"Invalid loop target ({loop_target_1_based}) from slide {self.current_index + 1}. Ignoring loop.")
-                # Fall through to normal advance logic
 
-        # Default auto-advance logic (if no valid loop occurred)
         if self.current_index < (num_slides - 1):
             print("Auto-advancing to next slide.")
-            self.next_slide()  # next_slide stops timer and update_display restarts it
+            self.next_slide()
         else:
             print("Timer expired on the last slide or no valid action, stopping.")
-            # No action, timer just stops (already single-shot)
-
-    # --- END MODIFIED ---
 
     def update_show_clear_button_state(self):
-        # ... (as before) ...
         if self.is_displaying:
             self.show_clear_button.setText(" Clear")
             self.show_clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
@@ -175,7 +298,6 @@ class ControlWindow(QMainWindow):
             self.start_or_go_slide()
 
     def toggle_display_window_visibility(self):
-        # ... (as before) ...
         if self.display_window:
             if self.display_window.isVisible():
                 self.display_window.hide()
@@ -187,7 +309,6 @@ class ControlWindow(QMainWindow):
                 self.toggle_display_button.setIcon(QIcon(get_icon_file_path("hide_display.png")))
 
     def open_playlist_editor(self):
-        # ... (as before) ...
         if self.editor_window is None or not self.editor_window.isVisible():
             self.editor_window = PlaylistEditorWindow(
                 display_window_instance=self.display_window,
@@ -201,62 +322,10 @@ class ControlWindow(QMainWindow):
             self.editor_window.raise_()
 
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
-        # ... (as before) ...
         print(f"ControlWindow received signal to reload: {saved_playlist_path}")
         self.load_playlist(saved_playlist_path)
 
-    def populate_playlist_view(self):
-        # ... (populate_playlist_view as before, showing duration and loop) ...
-        self.playlist_view.clear()
-        media_base_path = get_media_path()
-        for i, slide_data in enumerate(self.playlist.get_slides()):
-            item_text = f"Slide {i + 1}"
-            duration = slide_data.get("duration", 0)
-            loop_target = slide_data.get("loop_to_slide", 0)
-
-            info_parts = []
-            if duration > 0:
-                info_parts.append(f"{duration}s")
-            if loop_target > 0:
-                # Only show loop if duration is also > 0, as per requirement
-                if duration > 0:
-                    info_parts.append(f"Loop S{loop_target}")
-                else:  # Loop target on manual slide is non-functional but can be shown
-                    info_parts.append(f"(Loop S{loop_target} inactive)")
-
-            if not info_parts and duration == 0:  # If still no info parts, it's manual
-                item_text += " (Manual)"
-            elif info_parts:
-                item_text += f" ({', '.join(info_parts)})"
-
-            item = QListWidgetItem(item_text)
-            layers = slide_data.get("layers", [])
-            thumbnail_canvas = QPixmap(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
-            thumbnail_canvas.fill(Qt.GlobalColor.lightGray)
-            if layers:
-                first_image_filename = layers[0]
-                image_path = os.path.join(media_base_path, first_image_filename)
-                if os.path.exists(image_path):
-                    original_pixmap = QPixmap(image_path)
-                    if not original_pixmap.isNull():
-                        scaled_pixmap = original_pixmap.scaled(
-                            THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation
-                        )
-                        thumbnail_canvas.fill(Qt.GlobalColor.darkGray)
-                        x = (THUMBNAIL_WIDTH - scaled_pixmap.width()) / 2
-                        y = (THUMBNAIL_HEIGHT - scaled_pixmap.height()) / 2
-                        painter_on_canvas = QPainter(thumbnail_canvas)
-                        painter_on_canvas.drawPixmap(int(x), int(y), scaled_pixmap)
-                        painter_on_canvas.end()
-            item.setIcon(QIcon(thumbnail_canvas))
-            item.setData(Qt.ItemDataRole.UserRole, i)
-            self.playlist_view.addItem(item)
-        self.update_list_selection()
-
     def load_playlist_dialog(self):
-        # ... (as before) ...
         default_dir = get_playlists_path()
         fileName, _ = QFileDialog.getOpenFileName(self, "Open Playlist", default_dir, "JSON Files (*.json)")
         if fileName:
@@ -265,7 +334,6 @@ class ControlWindow(QMainWindow):
         return False
 
     def load_playlist(self, file_path):
-        # ... (as before) ...
         try:
             self.playlist.load(file_path)
             self.current_index = 0 if self.playlist.get_slides() else -1
@@ -284,7 +352,6 @@ class ControlWindow(QMainWindow):
             self.settings_manager.set_current_playlist(None)
 
     def load_last_playlist(self):
-        # ... (as before) ...
         last_playlist = self.settings_manager.get_current_playlist()
         if last_playlist:
             print(f"Loading last used playlist: {last_playlist}")
@@ -306,6 +373,7 @@ class ControlWindow(QMainWindow):
             self.current_index = current_item.data(Qt.ItemDataRole.UserRole)
         elif not (0 <= self.current_index < len(slides)):
             self.current_index = 0
+
         self.update_display()
 
     def go_to_selected_slide_from_list(self, item: QListWidgetItem):
@@ -319,15 +387,11 @@ class ControlWindow(QMainWindow):
     def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
         if current_item:
             new_index = current_item.data(Qt.ItemDataRole.UserRole)
-            # Stop timer only if the selection means a change in the *potentially timed* slide context
-            # For simplicity, always stop if an active timer and selection changes,
-            # update_display will restart if appropriate for the new current_index
             if self.slide_timer.isActive() and new_index != self.current_index:
                 self.slide_timer.stop()
                 print("Timer stopped due to new slide selection in list.")
             self.current_index = new_index
 
-    # --- MODIFIED: update_display now starts the timer and handles loop prep ---
     def update_display(self):
         if self.slide_timer.isActive():
             self.slide_timer.stop()
@@ -348,27 +412,21 @@ class ControlWindow(QMainWindow):
             loop_target_1_based = slide_data.get("loop_to_slide", 0)
             num_slides = len(self.playlist.get_slides())
 
-            # Start timer only if duration > 0
-            # The loop_to_slide condition for the last slide is handled in auto_advance_or_loop_slide
             if duration > 0:
                 print(
                     f"Starting timer for slide {self.current_index + 1} ({duration}s). Loop target: {loop_target_1_based if loop_target_1_based > 0 else 'None'}")
                 self.slide_timer.start(duration * 1000)
-            else:  # Duration is 0, no timer, no auto-loop
+            else:
                 print(f"Slide {self.current_index + 1} has 0s duration. Manual advance.")
                 if loop_target_1_based > 0:
                     print(f"  (Loop target {loop_target_1_based} ignored due to 0s duration)")
-
-        else:  # No slide_data
+        else:
             self.is_displaying = False
             if self.display_window: self.display_window.clear_display()
 
         self.update_show_clear_button_state()
 
-    # --- END MODIFIED ---
-
     def update_list_selection(self):
-        # ... (as before) ...
         if 0 <= self.current_index < self.playlist_view.count():
             for i in range(self.playlist_view.count()):
                 item = self.playlist_view.item(i)
@@ -412,7 +470,6 @@ class ControlWindow(QMainWindow):
         print("Display cleared by ControlWindow.")
 
     def close_application(self):
-        # ... (as before) ...
         print("Attempting to close application...")
         if self.slide_timer.isActive(): self.slide_timer.stop()
         if self.editor_window and self.editor_window.isVisible():
@@ -428,7 +485,6 @@ class ControlWindow(QMainWindow):
         QCoreApplication.instance().quit()
 
     def closeEvent(self, event):
-        # ... (as before) ...
         print("ControlWindow closeEvent triggered.")
         if self.slide_timer.isActive(): self.slide_timer.stop()
         if self.display_window and self.display_window.isVisible():
