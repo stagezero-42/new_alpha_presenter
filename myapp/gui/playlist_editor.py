@@ -9,21 +9,18 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 
 from .layer_editor_dialog import LayerEditorDialog
-# KeybindingsEditorDialog is no longer imported
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_playlists_path, get_icon_file_path, get_media_path
-# SettingsManager is no longer imported here
+
 
 class PlaylistEditorWindow(QMainWindow):
     playlist_saved_signal = Signal(str)
 
-    # --- MODIFIED: Removed settings_manager ---
     def __init__(self, display_window_instance, playlist_obj, parent=None):
         super().__init__(parent)
         self.base_title = "Playlist Editor"
         self.display_window = display_window_instance
         self.playlist = playlist_obj
-        # self.settings_manager = settings_manager # Removed
         self.playlists_base_dir = get_playlists_path()
 
         self.setWindowTitle(f"{self.base_title} [*]")
@@ -42,21 +39,18 @@ class PlaylistEditorWindow(QMainWindow):
         self.load_button = QPushButton(" Load")
         self.save_button = QPushButton(" Save")
         self.save_as_button = QPushButton(" Save As...")
-        # self.settings_button = QPushButton(" Settings") # Removed
         self.done_button = QPushButton(" Done")
 
         self.new_button.setIcon(QIcon(get_icon_file_path("new.png")))
         self.load_button.setIcon(QIcon(get_icon_file_path("load.png")))
         self.save_button.setIcon(QIcon(get_icon_file_path("save.png")))
         self.save_as_button.setIcon(QIcon(get_icon_file_path("save.png")))
-        # self.settings_button.setIcon(QIcon(get_icon_file_path("settings.png"))) # Removed
         self.done_button.setIcon(QIcon(get_icon_file_path("done.png")))
 
-        self.new_button.clicked.connect(self.new_playlist)
+        self.new_button.clicked.connect(self.new_playlist)  # This line caused the error
         self.load_button.clicked.connect(self.load_playlist_dialog)
         self.save_button.clicked.connect(self.save_playlist)
         self.save_as_button.clicked.connect(self.save_playlist_as)
-        # self.settings_button.clicked.connect(self.open_keybindings_editor) # Removed
         self.done_button.clicked.connect(self.close)
 
         toolbar_layout.addWidget(self.new_button)
@@ -64,11 +58,9 @@ class PlaylistEditorWindow(QMainWindow):
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
-        # toolbar_layout.addWidget(self.settings_button) # Removed
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
-        # ... (rest of setup_ui as before, specifically the list and slide controls) ...
         self.playlist_list = QListWidget()
         self.playlist_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.playlist_list.itemDoubleClicked.connect(self.edit_slide_layers_dialog)
@@ -76,30 +68,28 @@ class PlaylistEditorWindow(QMainWindow):
 
         slide_controls_layout = QHBoxLayout()
         self.add_slide_button = QPushButton(" Add Slide")
-        self.edit_layers_button = QPushButton(" Edit Slide")
+        self.edit_slide_button = QPushButton(" Edit Slide")
         self.preview_slide_button = QPushButton(" Preview Slide")
         self.remove_slide_button = QPushButton(" Remove Slide")
 
         self.add_slide_button.setIcon(QIcon(get_icon_file_path("add.png")))
-        self.edit_layers_button.setIcon(QIcon(get_icon_file_path("edit.png")))
+        self.edit_slide_button.setIcon(QIcon(get_icon_file_path("edit.png")))
         self.preview_slide_button.setIcon(QIcon(get_icon_file_path("preview.png")))
         self.remove_slide_button.setIcon(QIcon(get_icon_file_path("remove.png")))
 
         self.add_slide_button.clicked.connect(self.add_slide)
-        self.edit_layers_button.clicked.connect(self.edit_selected_slide_layers)
+        self.edit_slide_button.clicked.connect(self.edit_selected_slide_layers)
         self.preview_slide_button.clicked.connect(self.preview_selected_slide)
         self.remove_slide_button.clicked.connect(self.remove_slide)
 
         slide_controls_layout.addWidget(self.add_slide_button)
-        slide_controls_layout.addWidget(self.edit_layers_button)
+        slide_controls_layout.addWidget(self.edit_slide_button)
         slide_controls_layout.addWidget(self.preview_slide_button)
         slide_controls_layout.addWidget(self.remove_slide_button)
         main_layout.addLayout(slide_controls_layout)
+
         self.setCentralWidget(central_widget)
 
-    # open_keybindings_editor method is removed
-
-    # ... (rest of PlaylistEditorWindow methods as before) ...
     def mark_dirty(self, dirty=True):
         self.setWindowModified(dirty)
 
@@ -116,7 +106,23 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist_list.clear()
         for i, slide in enumerate(self.playlist.get_slides()):
             layers_str = ", ".join(slide.get("layers", []))
-            item_text = f"Slide {i + 1}: {layers_str if layers_str else '[Empty Slide]'}"
+            duration = slide.get("duration", 0)
+            loop_target = slide.get("loop_to_slide", 0)
+
+            duration_info = f" ({duration}s"
+            if duration > 0 and loop_target > 0:
+                duration_info += f", Loop to S{loop_target})"
+            elif duration > 0:
+                duration_info += ")"
+            else:
+                duration_info = " (Manual"
+                if loop_target > 0:
+                    duration_info += f", Loop to S{loop_target} inactive)"
+                else:
+                    duration_info += ")"
+
+            item_text = f"Slide {i + 1}{duration_info}: {layers_str if layers_str else '[Empty Slide]'}"
+
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(item)
@@ -127,17 +133,26 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist.set_slides(new_slides)
         self.mark_dirty()
 
+    # --- METHOD RESTORED ---
     def new_playlist(self):
+        """Clears the current playlist and starts a new one."""
         if self.isWindowModified():
-            if self.prompt_save_changes() == QMessageBox.StandardButton.Cancel: return
-        self.playlist = Playlist()
+            reply = self.prompt_save_changes()
+            if reply == QMessageBox.StandardButton.Cancel:
+                return  # User cancelled, do nothing
+            # If Save was chosen and failed, prompt_save_changes handles it or returns Cancel
+            # If Discard was chosen, we proceed.
+
+        self.playlist = Playlist()  # Create a new, empty Playlist object
         self.populate_list()
         self.update_title()
         self.mark_dirty(False)
 
+    # --- END METHOD RESTORED ---
+
     def add_slide(self):
         self.update_playlist_from_list_order()
-        new_slide = {"layers": []}
+        new_slide = {"layers": [], "duration": 0, "loop_to_slide": 0}
         self.playlist.add_slide(new_slide)
         self.populate_list()
         self.playlist_list.setCurrentRow(self.playlist_list.count() - 1)
@@ -162,13 +177,26 @@ class PlaylistEditorWindow(QMainWindow):
         slide_data = self.playlist.get_slide(row)
         if not slide_data: return
 
-        editor = LayerEditorDialog(slide_data.get("layers", []), self.display_window, self)
+        current_layers = slide_data.get("layers", [])
+        current_duration = slide_data.get("duration", 0)
+        current_loop_target = slide_data.get("loop_to_slide", 0)
+
+        editor = LayerEditorDialog(current_layers, current_duration, current_loop_target, self.display_window, self)
+
         if editor.exec():
-            updated_layers = editor.get_updated_layers()
-            if slide_data.get("layers", []) != updated_layers:
-                slide_data["layers"] = updated_layers
+            updated_data = editor.get_updated_slide_data()
+
+            changed = (slide_data.get("layers", []) != updated_data["layers"] or \
+                       slide_data.get("duration", 0) != updated_data["duration"] or \
+                       slide_data.get("loop_to_slide", 0) != updated_data["loop_to_slide"])
+
+            if changed:
+                slide_data["layers"] = updated_data["layers"]
+                slide_data["duration"] = updated_data["duration"]
+                slide_data["loop_to_slide"] = updated_data["loop_to_slide"]
                 self.playlist.update_slide(row, slide_data)
                 self.mark_dirty()
+
             self.populate_list()
             self.playlist_list.setCurrentRow(row)
 
