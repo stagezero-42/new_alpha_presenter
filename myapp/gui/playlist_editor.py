@@ -13,6 +13,11 @@ from PySide6.QtGui import QIcon
 from .file_dialog_helpers import get_themed_open_filename, get_themed_save_filename
 # --- END MODIFIED ---
 from .layer_editor_dialog import LayerEditorDialog
+
+# --- MODIFIED: Import SettingsWindow ---
+from .settings_window import SettingsWindow
+# --- END MODIFIED ---
+
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_playlists_path, get_media_path, get_playlist_file_path, get_icon_file_path
 from .widget_helpers import create_button
@@ -34,7 +39,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.setWindowTitle(f"{self.base_title} [*]")
         self.setGeometry(100, 100, 700, 600)
         self.setWindowModified(False)
-
+        self.settings_window_instance = None
         # --- ADD THIS CODE ---
         try:
             icon_name = "edit.png" # Edit icon
@@ -63,6 +68,9 @@ class PlaylistEditorWindow(QMainWindow):
         self.load_button = create_button(" Load", "load.png", on_click=self.load_playlist_dialog)
         self.save_button = create_button(" Save", "save.png", on_click=self.save_playlist)
         self.save_as_button = create_button(" Save As...", "save.png", on_click=self.save_playlist_as)
+
+        self.settings_button = create_button(" Settings", "settings.png", on_click=self.open_settings_window)
+
         self.done_button = create_button(" Done", "done.png", on_click=self.close)
 
         toolbar_layout.addWidget(self.new_button)
@@ -70,6 +78,9 @@ class PlaylistEditorWindow(QMainWindow):
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
+
+        toolbar_layout.addWidget(self.settings_button)
+
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
@@ -92,6 +103,17 @@ class PlaylistEditorWindow(QMainWindow):
 
         self.setCentralWidget(central_widget)
         logger.debug("PlaylistEditorWindow UI setup complete.")
+
+    def open_settings_window(self):
+        """Opens the settings editor window."""
+        logger.info("Opening settings window...")
+        # Check if a window is already open, if so, just activate it
+        if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
+            self.settings_window_instance = SettingsWindow(self)
+            self.settings_window_instance.show()
+        else:
+            self.settings_window_instance.activateWindow()
+            self.settings_window_instance.raise_()
 
     def mark_dirty(self, dirty=True):
         logger.debug(f"Marking window as dirty: {dirty}")
