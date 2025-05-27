@@ -8,13 +8,12 @@ from PySide6.QtWidgets import (
     QLabel, QSpinBox, QFrame
 )
 from PySide6.QtGui import QIcon
-# --- MODIFIED: Import new helper ---
 from .file_dialog_helpers import get_themed_open_filenames
-# --- END MODIFIED ---
 from ..utils.paths import get_media_path, get_media_file_path, get_icon_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 
+# Get the logger for this specific module
 logger = logging.getLogger(__name__)
 
 class LayerEditorDialog(QDialog):
@@ -29,7 +28,7 @@ class LayerEditorDialog(QDialog):
         self.display_window = display_window_instance
         self.setMinimumSize(400, 600)
 
-        # --- ADD THIS CODE ---
+        # Set window icon
         try:
             icon_name = "edit.png" # Edit icon
             icon_path = get_icon_file_path(icon_name)
@@ -38,9 +37,10 @@ class LayerEditorDialog(QDialog):
                 logger.debug(f"Set window icon for LayerEditorDialog from: {icon_path}")
             else:
                 logger.warning(f"LayerEditorDialog icon '{icon_name}' not found.")
+        except (OSError, IOError) as e:
+             logger.error(f"Failed to set LayerEditorDialog window icon due to OS/IO error: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"Failed to set LayerEditorDialog window icon: {e}", exc_info=True)
-        # --- END OF ADDED CODE ---
 
         self.setup_ui()
         self.populate_layers_list()
@@ -52,6 +52,7 @@ class LayerEditorDialog(QDialog):
         logger.debug("Setting up LayerEditorDialog UI...")
         main_layout = QVBoxLayout(self)
 
+        # Layers Section
         layers_label = QLabel("Image Layers (drag to reorder):")
         main_layout.addWidget(layers_label)
         self.layers_list_widget = QListWidget()
@@ -65,11 +66,13 @@ class LayerEditorDialog(QDialog):
         layers_buttons_layout.addWidget(self.remove_layer_button)
         main_layout.addLayout(layers_buttons_layout)
 
+        # Separator 1
         line1 = QFrame()
         line1.setFrameShape(QFrame.Shape.HLine)
         line1.setFrameShadow(QFrame.Shadow.Sunken)
         main_layout.addWidget(line1)
 
+        # Duration Section
         duration_layout = QHBoxLayout()
         duration_label = QLabel("Auto-advance after (seconds, 0 for manual):")
         self.duration_spinbox = QSpinBox()
@@ -80,6 +83,7 @@ class LayerEditorDialog(QDialog):
         duration_layout.addWidget(self.duration_spinbox)
         main_layout.addLayout(duration_layout)
 
+        # Loop Section
         loop_layout = QHBoxLayout()
         loop_label = QLabel("After duration, loop to slide # (1-based, 0 for none):")
         self.loop_target_spinbox = QSpinBox()
@@ -94,11 +98,13 @@ class LayerEditorDialog(QDialog):
         loop_layout.addWidget(self.loop_target_spinbox)
         main_layout.addLayout(loop_layout)
 
+        # Separator 2
         line2 = QFrame()
         line2.setFrameShape(QFrame.Shape.HLine)
         line2.setFrameShadow(QFrame.Shadow.Sunken)
         main_layout.addWidget(line2)
 
+        # Dialog Buttons
         ok_cancel_layout = QHBoxLayout()
         self.preview_button = create_button(
             " Preview Slide", "preview.png", on_click=self.preview_slide_on_display_from_editor
@@ -122,14 +128,11 @@ class LayerEditorDialog(QDialog):
 
     def add_layers(self):
         logger.info("Add layers button clicked, opening file dialog.")
-        # --- MODIFIED: Use new helper ---
         file_names = get_themed_open_filenames(
             self, "Select Image Files to Add as Layers", self.media_path,
             "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.svg)"
         )
-        # --- END MODIFIED ---
-
-        if file_names: # file_names is now a list
+        if file_names:
             logger.info(f"User selected {len(file_names)} files to add.")
             added_count = 0
             for source_file_path in file_names:
@@ -147,6 +150,7 @@ class LayerEditorDialog(QDialog):
                     dest_path = get_media_file_path(original_filename)
                     final_filename = original_filename
 
+                    # Handle potential filename clashes by renaming
                     if os.path.exists(dest_path) and not os.path.samefile(source_file_path, dest_path):
                         logger.info(f"File '{original_filename}' exists in media directory, attempting to rename.")
                         base_name, extension = os.path.splitext(original_filename)
@@ -160,12 +164,14 @@ class LayerEditorDialog(QDialog):
                             counter += 1
                         logger.info(f"Renamed '{original_filename}' to '{final_filename}' for copy.")
 
+                    # Copy if it doesn't exist at the (potentially new) destination
                     if not os.path.exists(dest_path):
                          shutil.copy2(source_file_path, dest_path)
                          logger.info(f"Copied '{source_file_path}' to '{dest_path}'")
                     else:
                          logger.info(f"Using existing file: '{dest_path}' (source was same or already existed)")
 
+                    # Add to layers list if not already present
                     if final_filename not in self.slide_layers:
                         self.slide_layers.append(final_filename)
                         added_count += 1
@@ -176,9 +182,6 @@ class LayerEditorDialog(QDialog):
                 except OSError as e:
                      logger.error(f"OS Error during file check or copy for {source_file_path}: {e}", exc_info=True)
                      QMessageBox.critical(self, "File Check Error", f"Could not check or copy {source_file_path}:\n{e}")
-                except Exception as e:
-                    logger.error(f"Generic error processing file {source_file_path}: {e}", exc_info=True)
-                    QMessageBox.critical(self, "File Copy Error", f"Could not process {source_file_path}:\n{e}")
 
             if added_count > 0:
                 logger.info(f"Successfully added {added_count} new layers.")
@@ -187,7 +190,6 @@ class LayerEditorDialog(QDialog):
                 logger.info("No new layers were added from the selection.")
         else:
             logger.info("File dialog cancelled, no files selected.")
-
 
     def remove_layer(self):
         logger.debug("Remove layer button clicked.")
@@ -201,7 +203,6 @@ class LayerEditorDialog(QDialog):
         logger.info(f"Removed layer '{removed_layer}' at index {row}.")
         self.populate_layers_list()
 
-
     def preview_slide_on_display_from_editor(self):
         logger.debug("Preview slide button clicked.")
         if not self.display_window:
@@ -211,18 +212,15 @@ class LayerEditorDialog(QDialog):
         logger.info(f"Previewing slide with layers: {self.slide_layers}")
         self.display_window.display_images(self.slide_layers)
 
-
     def update_internal_layers_from_widget(self):
         logger.debug("Updating internal slide_layers from list widget order.")
         self.slide_layers = [self.layers_list_widget.item(i).text() for i in range(self.layers_list_widget.count())]
         logger.debug(f"Internal layers updated: {self.slide_layers}")
 
-
     def accept_changes(self):
         logger.info("OK button clicked, accepting changes.")
         self.update_internal_layers_from_widget()
         self.accept()
-
 
     def get_updated_slide_data(self):
         logger.debug("Getting updated slide data from dialog.")

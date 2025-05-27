@@ -65,8 +65,12 @@ def create_composite_thumbnail(slide_data, slide_index, indicator_icons):
                     logger.debug(f"Successfully rendered image {first_image_filename} to thumbnail.")
                 else:
                     logger.warning(f"QPixmap is null for image path: {image_path}. Thumbnail will use background.")
+
+            except (OSError, IOError) as e:
+                logger.error(f"OS/IO Error loading or scaling thumbnail image {image_path}: {e}", exc_info=True)
             except Exception as e:
-                logger.error(f"Error loading or scaling thumbnail image {image_path}: {e}", exc_info=True)
+                logger.critical(f"Unexpected error loading/scaling thumbnail image {image_path}: {e}", exc_info=True)
+
         else:
             logger.warning(f"Thumbnail image not found at path: {image_path}. Using background.")
 

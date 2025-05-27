@@ -3,18 +3,18 @@ import os
 import logging
 from PySide6.QtWidgets import (
     QMainWindow, QPushButton, QVBoxLayout, QWidget, QMessageBox,
-    QListWidget, QListWidgetItem, QHBoxLayout, QApplication, # Removed QFileDialog
+    QListWidget, QListWidgetItem, QHBoxLayout, QApplication,
     QListView, QAbstractItemView
 )
 from PySide6.QtCore import QCoreApplication, QSize, Qt
 from PySide6.QtGui import QIcon, QPixmap
 
-# --- MODIFIED: Import new helper ---
+# Local Imports
 from .file_dialog_helpers import get_themed_open_filename
-# --- END MODIFIED ---
 from .playlist_editor import PlaylistEditorWindow
+from .settings_window import SettingsWindow  # Import the new SettingsWindow
 from ..playlist.playlist import Playlist
-from ..utils.paths import get_icon_file_path, get_media_path, get_playlists_path
+from ..utils.paths import get_icon_file_path, get_playlists_path
 from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
 from myapp import __version__
@@ -26,6 +26,7 @@ from .thumbnail_generator import (
 from .slide_timer import SlideTimer
 from .widget_helpers import create_button
 
+# Get the logger for this specific module
 logger = logging.getLogger(__name__)
 
 class ControlWindow(QMainWindow):
@@ -34,35 +35,42 @@ class ControlWindow(QMainWindow):
         logger.debug("Initializing ControlWindow...")
         self.setWindowTitle(f"Control Window v{__version__}")
 
-        # --- ADD THIS CODE ---
+        # Set Application Icon
         try:
-            icon_name = "app_icon.png"  # Your icon filename
+            icon_name = "app_icon.png"
             icon_path = get_icon_file_path(icon_name)
             if icon_path and os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
                 logger.debug(f"Set window icon from: {icon_path}")
             else:
-                logger.warning(f"Window icon '{icon_name}' not found at expected path: {icon_path}")
+                logger.warning(f"Window icon '{icon_name}' not found.")
+        except (OSError, IOError) as e:
+             logger.error(f"Failed to set window icon due to OS/IO error: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"Failed to set window icon: {e}", exc_info=True)
-        # --- END OF ADDED CODE ---
 
+        # Essential References
         self.display_window = display_window
         if not display_window:
             logger.critical("DisplayWindow instance must be provided.")
             raise ValueError("DisplayWindow instance must be provided.")
 
+        # Managers and State
         self.settings_manager = SettingsManager()
         self.playlist = Playlist()
         self.current_index = -1
         self.is_displaying = False
-        self.editor_window = None
 
+        # Window Trackers
+        self.editor_window = None
+        self.settings_window_instance = None # Added for settings window
+
+        # Components
         self.slide_timer = SlideTimer(self)
         self.slide_timer.timeout_action_required.connect(self.auto_advance_or_loop_slide)
-
         self.indicator_icons = self._load_indicator_icons()
 
+        # Setup
         self.setup_ui()
         setup_keybindings(self, self.settings_manager)
         self.update_show_clear_button_state()
@@ -82,12 +90,26 @@ class ControlWindow(QMainWindow):
         size = 16
         for name, filename in icon_files.items():
             try:
-                pixmap = QPixmap(get_icon_file_path(filename)).scaled(
+                path = get_icon_file_path(filename)
+                if not path or not os.path.exists(path):
+                     logger.warning(f"Indicator icon file not found: {filename}")
+                     icons[name] = QPixmap()
+                     continue
+
+                pixmap = QPixmap(path).scaled(
                     size, size, Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation)
-                icons[name] = pixmap
-            except Exception as e:
-                logger.warning(f"Could not load indicator icon '{filename}': {e}")
+
+                if pixmap.isNull():
+                    logger.warning(f"Failed to load or scale indicator icon '{filename}' (QPixmap is null).")
+                    icons[name] = QPixmap()
+                else:
+                    icons[name] = pixmap
+            except (OSError, IOError) as e:
+                logger.error(f"OS/IO Error loading indicator icon '{filename}': {e}", exc_info=True)
+                icons[name] = QPixmap()
+            except Exception as e: # Catch any other unexpected issues during loading/scaling
+                logger.critical(f"Unexpected error loading indicator icon '{filename}': {e}", exc_info=True)
                 icons[name] = QPixmap()
         logger.debug("Indicator icons loaded.")
         return icons
@@ -97,12 +119,16 @@ class ControlWindow(QMainWindow):
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
 
+        # Top Toolbar
         playlist_buttons_layout = QHBoxLayout()
         self.load_button = create_button(
             " Load", "load.png", "Load a playlist (Ctrl+L)", self.load_playlist_dialog
         )
         self.edit_button = create_button(
             " Edit", "edit.png", "Open the Playlist Editor (Ctrl+E)", self.open_playlist_editor
+        )
+        self.settings_button = create_button( # Added Settings button
+            " Settings", "settings.png", "Open Application Settings", self.open_settings_window
         )
         self.toggle_display_button = create_button(
             "Show Display", "show_display.png", "Show or Hide the Display Window", self.toggle_display_window_visibility
@@ -113,10 +139,13 @@ class ControlWindow(QMainWindow):
 
         playlist_buttons_layout.addWidget(self.load_button)
         playlist_buttons_layout.addWidget(self.edit_button)
+        playlist_buttons_layout.addWidget(self.settings_button) # Added here
+        playlist_buttons_layout.addStretch()
         playlist_buttons_layout.addWidget(self.toggle_display_button)
         playlist_buttons_layout.addWidget(self.close_button)
         main_layout.addLayout(playlist_buttons_layout)
 
+        # Playlist View
         self.playlist_view = QListWidget()
         self.playlist_view.setViewMode(QListView.ViewMode.IconMode)
         self.playlist_view.setFlow(QListView.Flow.LeftToRight)
@@ -132,8 +161,9 @@ class ControlWindow(QMainWindow):
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
         main_layout.addWidget(self.playlist_view)
 
+        # Playback Controls
         playback_buttons_layout = QHBoxLayout()
-        self.show_clear_button = QPushButton()
+        self.show_clear_button = QPushButton() # Will be styled in update_show_clear_button_state
         self.show_clear_button.clicked.connect(self.handle_show_clear_click)
 
         self.prev_button = create_button(
@@ -267,6 +297,16 @@ class ControlWindow(QMainWindow):
             self.editor_window.activateWindow()
             self.editor_window.raise_()
 
+    def open_settings_window(self):
+        """Opens the settings editor window."""
+        logger.info("Opening settings window...")
+        if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
+            self.settings_window_instance = SettingsWindow(self)
+            self.settings_window_instance.show()
+        else:
+            self.settings_window_instance.activateWindow()
+            self.settings_window_instance.raise_()
+
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
         logger.info(f"ControlWindow received signal to reload: {saved_playlist_path}")
         self.load_playlist(saved_playlist_path)
@@ -274,9 +314,7 @@ class ControlWindow(QMainWindow):
     def load_playlist_dialog(self):
         logger.debug("Opening load playlist dialog...")
         default_dir = get_playlists_path()
-        # --- MODIFIED: Use new helper ---
         fileName = get_themed_open_filename(self, "Open Playlist", default_dir, "JSON Files (*.json)")
-        # --- END MODIFIED ---
         if fileName:
             self.load_playlist(fileName)
             return True
@@ -426,6 +464,9 @@ class ControlWindow(QMainWindow):
             if not self.editor_window.close():
                 logger.warning("Editor close cancelled, aborting application close.")
                 return
+        if self.settings_window_instance and self.settings_window_instance.isVisible():
+            logger.debug("Closing settings window...")
+            self.settings_window_instance.close() # Close settings window
         if self.display_window:
             logger.debug("Closing display window...")
             self.display_window.close()
@@ -441,5 +482,7 @@ class ControlWindow(QMainWindow):
             self.display_window.close()
         if self.editor_window and self.editor_window.isVisible():
             self.editor_window.close()
+        if self.settings_window_instance and self.settings_window_instance.isVisible():
+             self.settings_window_instance.close()
         super().closeEvent(event)
         logger.debug("ControlWindow closeEvent finished.")
