@@ -31,6 +31,20 @@ class ControlWindow(QMainWindow):
         super().__init__()
         logger.debug("Initializing ControlWindow...")
         self.setWindowTitle(f"Control Window v{__version__}")
+
+        # --- ADD THIS CODE ---
+        try:
+            icon_name = "app_icon.png"  # Your icon filename
+            icon_path = get_icon_file_path(icon_name)
+            if icon_path and os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                logger.debug(f"Set window icon from: {icon_path}")
+            else:
+                logger.warning(f"Window icon '{icon_name}' not found at expected path: {icon_path}")
+        except Exception as e:
+            logger.error(f"Failed to set window icon: {e}", exc_info=True)
+        # --- END OF ADDED CODE ---
+
         self.display_window = display_window
         if not display_window:
             logger.critical("DisplayWindow instance must be provided.")
