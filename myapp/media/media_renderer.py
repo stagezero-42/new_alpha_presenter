@@ -3,7 +3,9 @@ import os
 from PySide6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor
 from PySide6.QtCore import Qt, QRectF
-# No change needed to paths here, it receives the full path or base path
+# --- NEW IMPORT ---
+from ..utils.paths import get_media_file_path
+# --- END NEW IMPORT ---
 
 class MediaRenderer(QMainWindow):
     def __init__(self):
@@ -23,17 +25,16 @@ class MediaRenderer(QMainWindow):
         self.setCentralWidget(self.view)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-        self.media_base_path = "" # This will be assets/media
         self.current_layers = []
 
-    def display_images(self, image_filenames, media_base_path):
+    # --- MODIFIED: Removed media_base_path argument ---
+    def display_images(self, image_filenames):
         """Display a list of images with layering.
            image_filenames: List of *just filenames*.
-           media_base_path: The path to the central 'assets/media' folder.
         """
         self.scene.clear()
-        self.media_base_path = media_base_path
         self.current_layers = image_filenames
+    # --- END MODIFIED ---
 
         if not image_filenames:
             print("No images to display for the current slide.")
@@ -46,8 +47,9 @@ class MediaRenderer(QMainWindow):
             return
 
         for i, filename in enumerate(image_filenames):
-            # Construct full path using the base media path
-            full_path = os.path.join(self.media_base_path, filename)
+            # --- MODIFIED: Use get_media_file_path ---
+            full_path = get_media_file_path(filename)
+            # --- END MODIFIED ---
 
             if not os.path.exists(full_path):
                 print(f"Image not found: {full_path}")
@@ -75,10 +77,14 @@ class MediaRenderer(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if self.current_layers and self.media_base_path:
-            self.display_images(self.current_layers, self.media_base_path)
+        if self.current_layers:
+            # --- MODIFIED: Call without media_base_path ---
+            self.display_images(self.current_layers)
+            # --- END MODIFIED ---
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self.current_layers and self.media_base_path:
-            self.display_images(self.current_layers, self.media_base_path)
+        if self.current_layers:
+            # --- MODIFIED: Call without media_base_path ---
+            self.display_images(self.current_layers)
+            # --- END MODIFIED ---

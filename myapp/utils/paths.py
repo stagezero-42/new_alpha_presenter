@@ -27,9 +27,21 @@ def get_playlists_path():
     """Returns the path to the 'playlists' directory."""
     return os.path.join(get_assets_path(), "playlists")
 
+# --- NEW FUNCTION ---
+def get_playlist_file_path(playlist_name):
+    """Returns the full path for a specific playlist file."""
+    return os.path.join(get_playlists_path(), playlist_name)
+# --- END NEW FUNCTION ---
+
 def get_media_path():
     """Returns the path to the 'media' directory."""
     return os.path.join(get_assets_path(), "media")
+
+# --- NEW FUNCTION ---
+def get_media_file_path(media_name):
+    """Returns the full path for a specific media file."""
+    return os.path.join(get_media_path(), media_name)
+# --- END NEW FUNCTION ---
 
 def get_settings_file_path():
     """Returns the path to the 'settings.json' file."""
