@@ -1,10 +1,10 @@
 # myapp/utils/security.py
 import os
 import re
+import logging  # Import logging
 
-# Define a set of potentially problematic characters/names.
-# We disallow path separators and control characters.
-# We also disallow names that are just '.' or '..'.
+logger = logging.getLogger(__name__)  # Get logger for this module
+
 _INVALID_CHARS_RE = re.compile(r'[\0/\\]')
 _INVALID_NAMES = {'.', '..'}
 
@@ -24,19 +24,16 @@ def is_safe_filename_component(filename):
         bool: True if the filename is considered safe, False otherwise.
     """
     if not filename or not isinstance(filename, str):
-        print("Security Warning: Filename is empty or not a string.")
+        logger.warning("Security Warning: Filename is empty or not a string.")
         return False
 
     if _INVALID_CHARS_RE.search(filename):
-        print(f"Security Warning: Filename '{filename}' contains invalid characters (/, \\, or null).")
+        logger.warning(f"Security Warning: Filename '{filename}' contains invalid characters (/, \\, or null).")
         return False
 
     if filename in _INVALID_NAMES:
-        print(f"Security Warning: Filename '{filename}' is '.' or '..'.")
+        logger.warning(f"Security Warning: Filename '{filename}' is '.' or '..'.")
         return False
-
-    # Optional: Check for OS-specific reserved names (more complex)
-    # e.g., on Windows: CON, PRN, AUX, NUL, COM1-9, LPT1-9
 
     return True
 
@@ -54,5 +51,4 @@ def get_safe_basename(path_from_dialog):
     if is_safe_filename_component(basename):
         return basename
     else:
-        # The warning is printed within is_safe_filename_component
         return None

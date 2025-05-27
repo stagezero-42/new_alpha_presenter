@@ -1,5 +1,8 @@
 # myapp/utils/json_validator.py
 import jsonschema
+import logging  # Import logging
+
+logger = logging.getLogger(__name__)  # Get logger for this module
 
 def validate_json(data, schema, file_description="JSON data"):
     """
@@ -18,12 +21,12 @@ def validate_json(data, schema, file_description="JSON data"):
     """
     try:
         jsonschema.validate(instance=data, schema=schema)
-        print(f"Validation successful for {file_description}.")
+        logger.debug(f"Validation successful for {file_description}.")
         return True, None
     except jsonschema.exceptions.ValidationError as e:
         path = "->".join(map(str, e.path))
-        print(f"Validation Error in {file_description}: {e.message} (at path: {path})")
+        logger.warning(f"Validation Error in {file_description}: {e.message} (at path: {path})")
         return False, e
     except Exception as e:
-        print(f"An unexpected error occurred during validation of {file_description}: {e}")
+        logger.error(f"An unexpected error occurred during validation of {file_description}: {e}", exc_info=True)
         return False, e
