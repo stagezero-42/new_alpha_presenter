@@ -14,7 +14,7 @@ from .file_dialog_helpers import get_themed_open_filename, get_themed_save_filen
 # --- END MODIFIED ---
 from .layer_editor_dialog import LayerEditorDialog
 from ..playlist.playlist import Playlist
-from ..utils.paths import get_playlists_path, get_media_path, get_playlist_file_path
+from ..utils.paths import get_playlists_path, get_media_path, get_playlist_file_path, get_icon_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 
@@ -34,6 +34,20 @@ class PlaylistEditorWindow(QMainWindow):
         self.setWindowTitle(f"{self.base_title} [*]")
         self.setGeometry(100, 100, 700, 600)
         self.setWindowModified(False)
+
+        # --- ADD THIS CODE ---
+        try:
+            icon_name = "edit.png" # Edit icon
+            icon_path = get_icon_file_path(icon_name)
+            if icon_path and os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                logger.debug(f"Set window icon for PlaylistEditor from: {icon_path}")
+            else:
+                logger.warning(f"PlaylistEditor icon '{icon_name}' not found.")
+        except Exception as e:
+            logger.error(f"Failed to set PlaylistEditor window icon: {e}", exc_info=True)
+        # --- END OF ADDED CODE ---
+
         self.setup_ui()
         self.update_title()
         self.populate_list()

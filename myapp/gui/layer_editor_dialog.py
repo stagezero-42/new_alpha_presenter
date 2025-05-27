@@ -11,7 +11,7 @@ from PySide6.QtGui import QIcon
 # --- MODIFIED: Import new helper ---
 from .file_dialog_helpers import get_themed_open_filenames
 # --- END MODIFIED ---
-from ..utils.paths import get_media_path, get_media_file_path
+from ..utils.paths import get_media_path, get_media_file_path, get_icon_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 
@@ -28,6 +28,19 @@ class LayerEditorDialog(QDialog):
         self.media_path = get_media_path()
         self.display_window = display_window_instance
         self.setMinimumSize(400, 600)
+
+        # --- ADD THIS CODE ---
+        try:
+            icon_name = "edit.png" # Edit icon
+            icon_path = get_icon_file_path(icon_name)
+            if icon_path and os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                logger.debug(f"Set window icon for LayerEditorDialog from: {icon_path}")
+            else:
+                logger.warning(f"LayerEditorDialog icon '{icon_name}' not found.")
+        except Exception as e:
+            logger.error(f"Failed to set LayerEditorDialog window icon: {e}", exc_info=True)
+        # --- END OF ADDED CODE ---
 
         self.setup_ui()
         self.populate_layers_list()

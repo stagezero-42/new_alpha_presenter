@@ -2,9 +2,9 @@
 import os
 import logging  # Import logging
 from PySide6.QtWidgets import QMainWindow, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
-from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor
+from PySide6.QtGui import QPixmap, QPainter, QBrush, QColor, QIcon
 from PySide6.QtCore import Qt, QRectF
-from ..utils.paths import get_media_file_path
+from ..utils.paths import get_media_file_path, get_icon_file_path
 
 logger = logging.getLogger(__name__)  # Get logger for this module
 
@@ -13,6 +13,17 @@ class MediaRenderer(QMainWindow):
         super().__init__()
         logger.debug("Initializing MediaRenderer...")
         self.setWindowTitle("Display Window")
+
+        try:
+            icon_name = "app_icon.png" # Main app icon
+            icon_path = get_icon_file_path(icon_name)
+            if icon_path and os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+                logger.debug(f"Set window icon for MediaRenderer from: {icon_path}")
+            else:
+                logger.warning(f"MediaRenderer icon '{icon_name}' not found.")
+        except Exception as e:
+            logger.error(f"Failed to set MediaRenderer window icon: {e}", exc_info=True)
 
         self.view = QGraphicsView()
         self.scene = QGraphicsScene()
