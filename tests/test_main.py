@@ -17,8 +17,12 @@ def mock_qapplication_instance(monkeypatch):
     return mock_app
 
 def create_mock_screen(name="Screen", x=0, y=0, width=1920, height=1080):
+    """Creates a MagicMock object simulating a QScreen."""
     screen = MagicMock()
-    screen.name = name
+    # --- THIS IS THE FIX ---
+    # Make 'name' a callable mock that returns the provided 'name' string
+    screen.name.return_value = name
+    # --- END FIX ---
     screen.geometry = MagicMock(return_value=QRect(x, y, width, height))
     return screen
 
