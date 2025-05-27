@@ -1,5 +1,6 @@
 # myapp/gui/playlist_editor.py
 import os
+import logging  # Import logging
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QFileDialog, QMessageBox,
@@ -10,21 +11,23 @@ from PySide6.QtGui import QIcon
 
 from .layer_editor_dialog import LayerEditorDialog
 from ..playlist.playlist import Playlist
-# --- MODIFIED: Added get_playlist_file_path ---
 from ..utils.paths import get_playlists_path, get_media_path, get_playlist_file_path
-# --- END MODIFIED ---
 from .widget_helpers import create_button
+from ..utils.security import is_safe_filename_component
 
+# Get the logger for this specific module
+logger = logging.getLogger(__name__)
 
 class PlaylistEditorWindow(QMainWindow):
     playlist_saved_signal = Signal(str)
 
     def __init__(self, display_window_instance, playlist_obj, parent=None):
         super().__init__(parent)
+        logger.debug(f"Initializing PlaylistEditorWindow. Current playlist has {len(playlist_obj.get_slides())} slides.") #
         self.base_title = "Playlist Editor"
         self.display_window = display_window_instance
         self.playlist = playlist_obj
-        self.playlists_base_dir = get_playlists_path()
+        self.playlists_base_dir = get_playlists_path() #
 
         self.setWindowTitle(f"{self.base_title} [*]")
         self.setGeometry(100, 100, 700, 600)
@@ -32,8 +35,10 @@ class PlaylistEditorWindow(QMainWindow):
         self.setup_ui()
         self.update_title()
         self.populate_list()
+        logger.debug("PlaylistEditorWindow initialized.")
 
     def setup_ui(self):
+        logger.debug("Setting up PlaylistEditorWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
 
@@ -70,8 +75,10 @@ class PlaylistEditorWindow(QMainWindow):
         main_layout.addLayout(slide_controls_layout)
 
         self.setCentralWidget(central_widget)
+        logger.debug("PlaylistEditorWindow UI setup complete.")
 
     def mark_dirty(self, dirty=True):
+        logger.debug(f"Marking window as dirty: {dirty}")
         self.setWindowModified(dirty)
 
     def update_title(self):
@@ -82,8 +89,10 @@ class PlaylistEditorWindow(QMainWindow):
             title += " - Untitled"
         title += " [*]"
         self.setWindowTitle(title)
+        logger.debug(f"Window title updated to: {title.replace(' [*]', '')}")
 
     def populate_list(self):
+        logger.debug("Populating playlist list widget.")
         self.playlist_list.clear()
         for i, slide in enumerate(self.playlist.get_slides()): #
             layers_str = ", ".join(slide.get("layers", []))
@@ -107,53 +116,72 @@ class PlaylistEditorWindow(QMainWindow):
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(item)
+        logger.info(f"Playlist list populated with {self.playlist_list.count()} items.")
 
     def update_playlist_from_list_order(self):
+        logger.debug("Updating internal playlist order from list widget.")
         new_slides = [self.playlist_list.item(i).data(Qt.ItemDataRole.UserRole)
                       for i in range(self.playlist_list.count())]
         self.playlist.set_slides(new_slides) #
         self.mark_dirty()
+        logger.debug("Internal playlist order updated.")
 
     def new_playlist(self):
-        """Clears the current playlist and starts a new one."""
+        logger.info("New playlist action triggered.")
         if self.isWindowModified():
+            logger.debug("Window has unsaved changes, prompting user.")
             reply = self.prompt_save_changes()
             if reply == QMessageBox.StandardButton.Cancel:
+                logger.info("New playlist action cancelled by user at save prompt.")
                 return
 
         self.playlist = Playlist() #
         self.populate_list()
         self.update_title()
         self.mark_dirty(False)
-
+        logger.info("New empty playlist created.")
 
     def add_slide(self):
+        logger.info("Add slide action triggered.")
         self.update_playlist_from_list_order()
         new_slide = {"layers": [], "duration": 0, "loop_to_slide": 0}
         self.playlist.add_slide(new_slide) #
         self.populate_list()
-        self.playlist_list.setCurrentRow(self.playlist_list.count() - 1)
+        new_slide_index = self.playlist_list.count() - 1
+        self.playlist_list.setCurrentRow(new_slide_index)
         self.mark_dirty()
+        logger.info(f"New slide added at index {new_slide_index}. Opening editor.")
         self.edit_selected_slide_layers()
 
     def remove_slide(self):
+        logger.debug("Remove slide action triggered.")
         current_item = self.playlist_list.currentItem()
-        if not current_item: return
+        if not current_item:
+            logger.warning("Remove slide called but no item selected.")
+            return
         row = self.playlist_list.row(current_item)
         self.playlist_list.takeItem(row)
-        self.update_playlist_from_list_order()
-        self.populate_list()
+        self.update_playlist_from_list_order() # This updates self.playlist
+        self.populate_list() # Repopulate to reflect removal and re-index display
+        self.mark_dirty()
+        logger.info(f"Slide at index {row} removed.")
 
     def edit_selected_slide_layers(self):
+        logger.debug("Edit selected slide action triggered.")
         current_item = self.playlist_list.currentItem()
-        if not current_item: return
+        if not current_item:
+            logger.warning("Edit slide called but no item selected.")
+            return
         self.edit_slide_layers_dialog(current_item)
 
     def edit_slide_layers_dialog(self, item):
         row = self.playlist_list.row(item)
         slide_data = self.playlist.get_slide(row) #
-        if not slide_data: return
+        if not slide_data:
+            logger.error(f"Could not retrieve slide data for row {row} during edit.")
+            return
 
+        logger.info(f"Opening layer editor for slide at index {row}.")
         current_layers = slide_data.get("layers", [])
         current_duration = slide_data.get("duration", 0)
         current_loop_target = slide_data.get("loop_to_slide", 0)
@@ -161,105 +189,163 @@ class PlaylistEditorWindow(QMainWindow):
         editor = LayerEditorDialog(current_layers, current_duration, current_loop_target, self.display_window, self)
 
         if editor.exec():
-            updated_data = editor.get_updated_slide_data()
+            logger.info(f"Layer editor for slide {row} accepted.")
+            updated_data = editor.get_updated_slide_data() #
 
             changed = (slide_data.get("layers", []) != updated_data["layers"] or \
                        slide_data.get("duration", 0) != updated_data["duration"] or \
                        slide_data.get("loop_to_slide", 0) != updated_data["loop_to_slide"])
 
             if changed:
+                logger.info(f"Slide {row} data changed. Updating playlist.")
                 slide_data["layers"] = updated_data["layers"]
                 slide_data["duration"] = updated_data["duration"]
                 slide_data["loop_to_slide"] = updated_data["loop_to_slide"]
                 self.playlist.update_slide(row, slide_data) #
                 self.mark_dirty()
+            else:
+                logger.info(f"Layer editor for slide {row} closed with no changes.")
 
             self.populate_list()
             self.playlist_list.setCurrentRow(row)
+        else:
+            logger.info(f"Layer editor for slide {row} cancelled.")
+
 
     def preview_selected_slide(self):
+        logger.debug("Preview selected slide action triggered.")
         current_item = self.playlist_list.currentItem()
-        if not current_item or not self.display_window: return
+        if not current_item:
+            logger.warning("Preview slide called but no item selected.")
+            return
+        if not self.display_window:
+            logger.warning("Preview slide called but no display window available.")
+            return
+
         row = self.playlist_list.row(current_item)
         slide_data = self.playlist.get_slide(row) #
         if slide_data:
-            # --- MODIFIED: Pass only filenames ---
-            self.display_window.display_images(slide_data.get("layers", [])) #
-            # --- END MODIFIED ---
+            layers_to_preview = slide_data.get("layers", [])
+            logger.info(f"Previewing slide at index {row} with layers: {layers_to_preview}")
+            self.display_window.display_images(layers_to_preview) #
 
     def load_playlist_dialog(self):
+        logger.info("Load playlist dialog action triggered.")
         if self.isWindowModified():
-            if self.prompt_save_changes() == QMessageBox.StandardButton.Cancel: return
+            logger.debug("Window has unsaved changes, prompting user.")
+            if self.prompt_save_changes() == QMessageBox.StandardButton.Cancel:
+                logger.info("Load playlist action cancelled by user at save prompt.")
+                return
 
         file_name, _ = QFileDialog.getOpenFileName(self, "Load Playlist", self.playlists_base_dir,
                                                    "JSON Files (*.json)")
         if file_name:
+            logger.info(f"User selected playlist file to load: {file_name}")
             try:
                 self.playlist.load(file_name) #
                 self.populate_list()
                 self.update_title()
                 self.mark_dirty(False)
                 self.playlist_saved_signal.emit(file_name)
+                logger.info(f"Successfully loaded playlist: {file_name}")
             except (FileNotFoundError, ValueError) as e:
+                logger.error(f"Failed to load playlist '{file_name}': {e}", exc_info=True)
                 QMessageBox.critical(self, "Load Error", f"Failed to load playlist: {e}")
+        else:
+            logger.info("Load playlist dialog cancelled by user.")
+
 
     def save_playlist(self):
+        logger.info("Save playlist action triggered.")
         self.update_playlist_from_list_order()
         if not self.playlist.file_path:
+            logger.info("Playlist has no current file path, calling Save As...")
             return self.save_playlist_as()
         else:
+            logger.info(f"Saving playlist to: {self.playlist.file_path}")
             if self.playlist.save(self.playlist.file_path): #
                 self.mark_dirty(False)
                 QMessageBox.information(self, "Save Success", "Playlist saved.")
                 self.playlist_saved_signal.emit(self.playlist.file_path)
+                logger.info("Playlist saved successfully.")
                 return True
             else:
+                logger.error(f"Failed to save playlist to {self.playlist.file_path}")
                 QMessageBox.critical(self, "Save Error", "Failed to save playlist.")
                 return False
 
     def save_playlist_as(self):
+        logger.info("Save playlist as action triggered.")
         self.update_playlist_from_list_order()
         current_filename = os.path.basename(self.playlist.file_path) if self.playlist.file_path else "untitled.json"
         filename, ok = QInputDialog.getText(self, "Save Playlist As", "Enter filename:", text=current_filename)
 
         if ok and filename:
+            logger.debug(f"User entered filename for Save As: {filename}")
+            if not is_safe_filename_component(filename): #
+                logger.error(f"Save As failed: unsafe filename '{filename}' provided.")
+                QMessageBox.critical(self, "Save Error",
+                                     f"The filename '{filename}' is invalid or "
+                                     f"contains forbidden characters/patterns.")
+                return False
+
             if not filename.lower().endswith('.json'):
                 filename += '.json'
-            # --- MODIFIED: Use get_playlist_file_path ---
-            full_save_path = get_playlist_file_path(filename)
-            # --- END MODIFIED ---
+                logger.debug(f"Appended .json extension, filename is now: {filename}")
+
+            full_save_path = get_playlist_file_path(filename) #
+            logger.info(f"Attempting to save playlist to: {full_save_path}")
 
             if os.path.exists(full_save_path):
+                logger.warning(f"File '{full_save_path}' already exists, prompting for overwrite.")
                 reply = QMessageBox.question(self, "Confirm Overwrite", f"'{filename}' exists. Overwrite?",
                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.No: return False
+                if reply == QMessageBox.StandardButton.No:
+                    logger.info("User chose not to overwrite. Save As cancelled.")
+                    return False
 
             if self.playlist.save(full_save_path): #
                 self.update_title()
                 self.mark_dirty(False)
                 QMessageBox.information(self, "Save Success", f"Playlist saved as {filename}.")
                 self.playlist_saved_signal.emit(full_save_path)
+                logger.info(f"Playlist successfully saved as {full_save_path}")
                 return True
             else:
+                logger.error(f"Failed to save playlist to {full_save_path}")
                 QMessageBox.critical(self, "Save Error", "Failed to save playlist.")
                 return False
-        return False
+        else:
+            logger.info("Save As dialog cancelled or no filename entered.")
+            return False
 
     def prompt_save_changes(self):
+        logger.debug("Prompting user to save unsaved changes.")
         reply = QMessageBox.question(self, 'Unsaved Changes',
                                      "Save changes before proceeding?",
                                      QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                                      QMessageBox.StandardButton.Save)
         if reply == QMessageBox.StandardButton.Save:
+            logger.info("User chose to Save changes.")
             return QMessageBox.StandardButton.Save if self.save_playlist() else QMessageBox.StandardButton.Cancel
+        elif reply == QMessageBox.StandardButton.Discard:
+            logger.info("User chose to Discard changes.")
+        else: # Cancel
+            logger.info("User chose to Cancel operation.")
         return reply
 
     def closeEvent(self, event):
+        logger.debug("PlaylistEditorWindow closeEvent triggered.")
         if self.isWindowModified():
+            logger.info("Window has unsaved changes, prompting user before closing.")
             reply = self.prompt_save_changes()
             if reply == QMessageBox.StandardButton.Cancel:
+                logger.info("Close event ignored due to user cancelling save prompt.")
                 event.ignore()
                 return
         event.accept()
-        if event.isAccepted() and self.display_window:
-            self.display_window.clear_display() #
+        if event.isAccepted():
+            logger.info("PlaylistEditorWindow closing.")
+            if self.display_window:
+                logger.debug("Clearing display window on PlaylistEditor close.")
+                self.display_window.clear_display() #

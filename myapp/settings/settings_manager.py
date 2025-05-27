@@ -1,8 +1,12 @@
 # myapp/settings/settings_manager.py
 import json
 import os
+import logging # Import logging
 from ..utils.paths import get_settings_file_path
+from ..utils.schemas import SETTINGS_SCHEMA
+from ..utils.json_validator import validate_json
 
+logger = logging.getLogger(__name__) # Get logger for this module
 
 class SettingsManager:
     def __init__(self):
@@ -11,19 +15,23 @@ class SettingsManager:
         self.load_settings()
 
     def _load_defaults(self):
-        """Returns the default settings dictionary with fixed keybindings."""
+        """Returns the default settings dictionary."""
         return {
             "current_playlist_path": None,
             "keybindings": {
-                "next": ["Right", "Down", "PgDown"],  # Updated
-                "prev": ["Left", "Up", "PgUp"],  # Updated
+                "next": ["Right", "Down", "PgDown"],
+                "prev": ["Left", "Up", "PgUp"],
                 "go": ["Space"],
                 "clear": ["Escape"],
                 "quit": ["Ctrl+Q"],
                 "load": ["Ctrl+L"],
                 "edit": ["Ctrl+E"]
-            }
-            # "custom_key_map" is removed
+            },
+            # --- NEW LOGGING DEFAULTS ---
+            "log_level": "INFO",
+            "log_to_file": False,
+            "log_file_path": "alphapresenter.log"
+            # --- END NEW LOGGING DEFAULTS ---
         }
 
     def load_settings(self):
@@ -33,41 +41,48 @@ class SettingsManager:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
                     loaded_settings = json.load(f)
 
+                is_valid, _ = validate_json(loaded_settings, SETTINGS_SCHEMA, "Settings file")
+                if not is_valid:
+                    logger.warning("Settings file format is not fully valid. "
+                                   "Attempting to load usable parts.")
+
                 defaults = self._load_defaults()
-                self.settings = defaults  # Start with current defaults
+                self.settings = defaults
 
-                # Update with loaded settings, but ensure structure for keybindings
-                if "current_playlist_path" in loaded_settings:
-                    self.settings["current_playlist_path"] = loaded_settings["current_playlist_path"]
-
-                if "keybindings" in loaded_settings and isinstance(loaded_settings["keybindings"], dict):
-                    # Only update keys present in defaults to avoid keeping old, unused bindings
-                    for key in self.settings["keybindings"].keys():
-                        if key in loaded_settings["keybindings"]:
-                            val = loaded_settings["keybindings"][key]
-                            # Ensure it's a list
-                            self.settings["keybindings"][key] = [str(v) for v in val] if isinstance(val, list) else [
-                                str(val)]
-                # "custom_key_map" is no longer loaded or processed
-            else:  # If no file, save current defaults
+                if isinstance(loaded_settings, dict):
+                    # --- MODIFIED: Load all known keys ---
+                    for key in self.settings.keys():
+                        if key in loaded_settings:
+                             # Basic type check before assigning, could be more robust
+                             if key == "keybindings" and isinstance(loaded_settings[key], dict):
+                                 # Special handling for keybindings (already exists)
+                                 for k_key in self.settings["keybindings"].keys():
+                                     if k_key in loaded_settings["keybindings"]:
+                                         val = loaded_settings["keybindings"][k_key]
+                                         self.settings["keybindings"][k_key] = [str(v) for v in val] if isinstance(val, list) else [str(val)]
+                             elif key != "keybindings":
+                                 # General handling for other keys
+                                 self.settings[key] = loaded_settings[key]
+                    # --- END MODIFIED ---
+            else:
+                logger.info("No settings file found, creating with defaults.")
                 self.settings = self._load_defaults()
                 self.save_settings()
         except (json.JSONDecodeError, IOError) as e:
-            print(f"Error loading settings from {self.settings_file}: {e}. Using defaults.")
+            logger.error(f"Error loading settings from {self.settings_file}: {e}. Using defaults.", exc_info=True)
             self.settings = self._load_defaults()
 
     def save_settings(self):
         """Saves current settings to the JSON file."""
         try:
-            # Only save relevant parts
-            settings_to_save = {
-                "current_playlist_path": self.settings.get("current_playlist_path"),
-                "keybindings": self.settings.get("keybindings")
-            }
+            # --- MODIFIED: Save all current settings ---
+            settings_to_save = self.settings.copy()
+            # --- END MODIFIED ---
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(settings_to_save, f, indent=4)
+            logger.info("Settings saved.")
         except IOError as e:
-            print(f"Error saving settings to {self.settings_file}: {e}")
+            logger.error(f"Error saving settings to {self.settings_file}: {e}", exc_info=True)
 
     def get_setting(self, key, default=None):
         """Gets a specific setting value."""
@@ -75,12 +90,13 @@ class SettingsManager:
 
     def set_setting(self, key, value):
         """Sets a specific setting value and saves immediately."""
-        # Only allow known top-level keys to be set to prevent arbitrary additions
-        if key in self._load_defaults():
+        # --- MODIFIED: Allow setting known keys ---
+        if key in self._load_defaults().keys():
+        # --- END MODIFIED ---
             self.settings[key] = value
             self.save_settings()
         else:
-            print(f"Warning: Attempted to set unknown setting key '{key}'")
+            logger.warning(f"Attempted to set unknown setting key '{key}'")
 
     def get_current_playlist(self):
         """Gets the path to the last used playlist."""
@@ -90,5 +106,3 @@ class SettingsManager:
     def set_current_playlist(self, path):
         """Sets the path for the last used playlist."""
         self.set_setting("current_playlist_path", path)
-
-    # Removed add_custom_key and get_custom_key_data
