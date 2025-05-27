@@ -1,18 +1,20 @@
 # myapp/gui/layer_editor_dialog.py
 import os
 import shutil
-import logging  # Import logging
+import logging
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton,
-    QFileDialog, QMessageBox, QAbstractItemView, QListWidgetItem,
+    QMessageBox, QAbstractItemView, QListWidgetItem,
     QLabel, QSpinBox, QFrame
 )
 from PySide6.QtGui import QIcon
+# --- MODIFIED: Import new helper ---
+from .file_dialog_helpers import get_themed_open_filenames
+# --- END MODIFIED ---
 from ..utils.paths import get_media_path, get_media_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 
-# Get the logger for this specific module
 logger = logging.getLogger(__name__)
 
 class LayerEditorDialog(QDialog):
@@ -107,11 +109,14 @@ class LayerEditorDialog(QDialog):
 
     def add_layers(self):
         logger.info("Add layers button clicked, opening file dialog.")
-        file_names, _ = QFileDialog.getOpenFileNames(
-            self, "Select Image Files to Add as Layers", self.media_path, # Start in media_path for convenience
+        # --- MODIFIED: Use new helper ---
+        file_names = get_themed_open_filenames(
+            self, "Select Image Files to Add as Layers", self.media_path,
             "Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.svg)"
         )
-        if file_names:
+        # --- END MODIFIED ---
+
+        if file_names: # file_names is now a list
             logger.info(f"User selected {len(file_names)} files to add.")
             added_count = 0
             for source_file_path in file_names:
@@ -126,7 +131,7 @@ class LayerEditorDialog(QDialog):
                                             f"invalid characters or patterns and cannot be added.")
                         continue
 
-                    dest_path = get_media_file_path(original_filename) #
+                    dest_path = get_media_file_path(original_filename)
                     final_filename = original_filename
 
                     if os.path.exists(dest_path) and not os.path.samefile(source_file_path, dest_path):
@@ -135,7 +140,7 @@ class LayerEditorDialog(QDialog):
                         counter = 1
                         while True:
                             final_filename = f"{base_name}_{counter:03d}{extension}"
-                            new_dest_path = get_media_file_path(final_filename) #
+                            new_dest_path = get_media_file_path(final_filename)
                             if not os.path.exists(new_dest_path):
                                 dest_path = new_dest_path
                                 break
@@ -191,7 +196,7 @@ class LayerEditorDialog(QDialog):
             return
         self.update_internal_layers_from_widget()
         logger.info(f"Previewing slide with layers: {self.slide_layers}")
-        self.display_window.display_images(self.slide_layers) #
+        self.display_window.display_images(self.slide_layers)
 
 
     def update_internal_layers_from_widget(self):
