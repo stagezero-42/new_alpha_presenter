@@ -34,7 +34,6 @@ class ControlWindow(QMainWindow):
         logger.debug("Initializing ControlWindow...")
         self.setWindowTitle(f"Control Window v{__version__}")
 
-        # Set Application Icon
         try:
             icon_name = "app_icon.png"
             icon_path = get_icon_file_path(icon_name)
@@ -54,20 +53,19 @@ class ControlWindow(QMainWindow):
 
         self.settings_manager = SettingsManager()
         self.playlist = Playlist()
-        self.current_index = -1 # Start with no slide selected
-        self.is_displaying = False # Start with nothing on screen
+        self.current_index = -1
+        self.is_displaying = False
 
         self.editor_window = None
         self.settings_window_instance = None
 
         self.slide_timer = SlideTimer(self)
         self.slide_timer.timeout_action_required.connect(self.auto_advance_or_loop_slide)
-
         self.indicator_icons = self._load_indicator_icons()
 
         self.setup_ui()
         setup_keybindings(self, self.settings_manager)
-        self.update_ui_state() # Use a single method to set initial UI
+        self.update_ui_state()
         self.load_last_playlist()
         logger.debug("ControlWindow initialization complete.")
 
@@ -98,7 +96,6 @@ class ControlWindow(QMainWindow):
         return icons
 
     def setup_ui(self):
-        # ... (UI setup remains largely the same, ensure buttons exist) ...
         logger.debug("Setting up ControlWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -121,7 +118,6 @@ class ControlWindow(QMainWindow):
         self.playlist_view = QListWidget()
         self.playlist_view.setViewMode(QListView.ViewMode.IconMode)
         self.playlist_view.setFlow(QListView.Flow.LeftToRight)
-        # ... (Rest of playlist_view setup) ...
         self.playlist_view.setMovement(QListView.Movement.Static)
         self.playlist_view.setResizeMode(QListView.ResizeMode.Adjust)
         self.playlist_view.setWrapping(False)
@@ -133,7 +129,6 @@ class ControlWindow(QMainWindow):
         self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
         main_layout.addWidget(self.playlist_view)
-
 
         playback_buttons_layout = QHBoxLayout()
         self.show_clear_button = QPushButton()
@@ -149,235 +144,7 @@ class ControlWindow(QMainWindow):
         self.resize(600, 350)
         logger.debug("ControlWindow UI setup complete.")
 
-    # --- Core State Transition Methods ---
-
-    def _set_slide_index(self, new_index):
-        """
-        Safely sets the current_index, ensuring it's valid or -1.
-        Returns True if the index changed, False otherwise.
-        """
-        slides = self.playlist.get_slides()
-        num_slides = len(slides)
-
-        old_index = self.current_index
-        target_index = new_index
-
-        if not slides:
-            target_index = -1
-        elif not (0 <= new_index < num_slides):
-            logger.warning(f"Requested index {new_index} out of bounds. Setting to -1 or keeping current.")
-            target_index = self.current_index if (0 <= self.current_index < num_slides) else -1
-
-        if target_index != old_index:
-            self.current_index = target_index
-            logger.debug(f"Slide index changed from {old_index} to {self.current_index}")
-            self.update_ui_state() # Update UI whenever index changes
-            return True
-        return False
-
-    def _display_current_slide(self):
-        """
-        Stops timer, validates index, and updates the display window.
-        Sets is_displaying = True if successful.
-        """
-        self.slide_timer.stop()
-        slides = self.playlist.get_slides()
-
-        if not (0 <= self.current_index < len(slides)):
-            logger.warning(f"Cannot display: Invalid index {self.current_index} or no slides.")
-            self.clear_display_screen()
-            return
-
-        slide_data = self.playlist.get_slide(self.current_index)
-        if not slide_data: # Should not happen if index is valid, but good check
-            logger.error(f"Inconsistency: No slide data for valid index {self.current_index}")
-            self.clear_display_screen()
-            return
-
-        logger.info(f"Displaying slide {self.current_index + 1}.")
-        if self.display_window and not self.display_window.isVisible():
-            self.toggle_display_window_visibility()
-
-        self.is_displaying = True
-        self.display_window.display_images(slide_data.get("layers", []))
-
-        duration = slide_data.get("duration", 0)
-        if duration > 0:
-            self.slide_timer.start(duration)
-
-        self.update_ui_state()
-
-    def clear_display_screen(self):
-        """Stops timer, clears display, sets is_displaying = False."""
-        if not self.is_displaying and not self.slide_timer.is_active():
-             return # Already clear
-
-        logger.info("Clearing display screen.")
-        self.slide_timer.stop()
-        if self.display_window:
-            self.display_window.clear_display()
-        self.is_displaying = False
-        self.update_ui_state()
-
-    def update_ui_state(self):
-        """Updates list selection and button states based on current state."""
-        self.update_list_selection()
-        self.update_show_clear_button_state()
-        # Add updates for prev/next button enabled state if needed
-        slides = self.playlist.get_slides()
-        has_slides = bool(slides)
-        self.prev_button.setEnabled(has_slides and self.current_index > 0)
-        self.next_button.setEnabled(has_slides and self.current_index < len(slides) - 1)
-        self.show_clear_button.setEnabled(has_slides)
-
-
-    def update_list_selection(self):
-        """Updates the visual selection in the QListWidget."""
-        logger.debug(f"Updating list selection to index {self.current_index}.")
-        item_to_select = None
-        for i in range(self.playlist_view.count()):
-            item = self.playlist_view.item(i)
-            if item.data(Qt.ItemDataRole.UserRole) == self.current_index:
-                item_to_select = item
-                break
-
-        # Disconnect to prevent handle_list_selection loop, then reconnect
-        try:
-            self.playlist_view.currentItemChanged.disconnect(self.handle_list_selection)
-        except (TypeError, RuntimeError): # If not connected (e.g. during setup)
-            pass
-
-        self.playlist_view.setCurrentItem(item_to_select)
-        if item_to_select:
-            self.playlist_view.scrollToItem(item_to_select, QAbstractItemView.ScrollHint.PositionAtCenter)
-
-        self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
-
-
-    def update_show_clear_button_state(self):
-        """Updates the 'Show/Clear' button icon and text."""
-        if self.is_displaying:
-            self.show_clear_button.setText(" Clear")
-            self.show_clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
-            self.show_clear_button.setToolTip("Clear the display (Space or Esc)")
-        else:
-            self.show_clear_button.setText(" Show")
-            self.show_clear_button.setIcon(QIcon(get_icon_file_path("play.png")))
-            self.show_clear_button.setToolTip("Show the selected slide (Space)")
-
-    # --- User Action Handlers ---
-
-    def handle_show_clear_click(self):
-        logger.debug("Show/Clear button clicked.")
-        if self.is_displaying:
-            self.clear_display_screen()
-        else:
-            slides = self.playlist.get_slides()
-            if not slides:
-                QMessageBox.information(self, "No Playlist", "Load a playlist to show a slide.")
-                return
-            # If no valid selection, set to 0 before displaying
-            if not (0 <= self.current_index < len(slides)):
-                self._set_slide_index(0)
-
-            self._display_current_slide()
-
-    def next_slide(self):
-        logger.debug("Next slide triggered.")
-        slides = self.playlist.get_slides()
-        if not slides or self.current_index >= len(slides) - 1:
-            logger.info("Cannot go next: No slides or already at the end.")
-            return
-        self._set_slide_index(self.current_index + 1)
-        self._display_current_slide()
-
-    def prev_slide(self):
-        logger.debug("Previous slide triggered.")
-        if self.current_index <= 0:
-            logger.info("Cannot go previous: Already at the start or no selection.")
-            return
-        self._set_slide_index(self.current_index - 1)
-        self._display_current_slide()
-
-    def go_to_selected_slide_from_list(self, item: QListWidgetItem):
-        logger.debug("Slide list double-clicked.")
-        if item:
-            index = item.data(Qt.ItemDataRole.UserRole)
-            self._set_slide_index(index)
-            self._display_current_slide()
-
-    def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
-        logger.debug("List selection changed via UI.")
-        if self.slide_timer.is_active():
-            self.slide_timer.stop()
-            logger.debug("Timer stopped due to list selection.")
-            # Optionally clear display or keep it? Keeping it seems less jarring.
-            # self.is_displaying = False # If we want click to stop display
-            # self.update_ui_state()
-
-        if current_item:
-            self._set_slide_index(current_item.data(Qt.ItemDataRole.UserRole))
-        else:
-            self._set_slide_index(-1)
-
-    def auto_advance_or_loop_slide(self):
-        logger.debug("Timer triggered for auto-advance/loop.")
-        if not self.is_displaying: # Should not happen, but a good guard
-            logger.debug("Display not active, timer ignored.")
-            return
-
-        slide_data = self.playlist.get_slide(self.current_index)
-        if not slide_data: return
-
-        num_slides = len(self.playlist.get_slides())
-        loop_target_1_based = slide_data.get("loop_to_slide", 0)
-
-        if loop_target_1_based > 0:
-            loop_target_0_based = loop_target_1_based - 1
-            if 0 <= loop_target_0_based < num_slides:
-                 logger.info(f"Looping to slide {loop_target_1_based}.")
-                 self._set_slide_index(loop_target_0_based)
-                 self._display_current_slide()
-                 return
-            else:
-                 logger.warning(f"Invalid loop target ({loop_target_1_based}). Advancing instead.")
-
-        # If no loop, or loop invalid, or loop to self -> advance
-        if self.current_index < num_slides - 1:
-            logger.info("Auto-advancing to next slide.")
-            self._set_slide_index(self.current_index + 1)
-            self._display_current_slide()
-        else:
-            logger.info("Timer expired on last slide, no loop. Stopping.")
-            self.clear_display_screen() # Or maybe just stop? Clearing seems safer.
-
-    def load_playlist(self, file_path):
-        logger.info(f"Attempting to load playlist: {file_path}")
-        self.slide_timer.stop() # Stop timer before loading
-        try:
-            self.playlist.load(file_path)
-            self.settings_manager.set_current_playlist(file_path)
-            logger.info(f"Successfully loaded: {file_path}")
-        except (FileNotFoundError, ValueError) as e:
-            logger.error(f"Failed to load playlist {file_path}: {e}", exc_info=True)
-            QMessageBox.critical(self, "Error", str(e))
-            self.playlist = Playlist() # Reset to empty
-            self.settings_manager.set_current_playlist(None)
-
-        # Always reset state after loading (success or fail)
-        self.clear_display_screen()
-        self.populate_playlist_view() # This will repopulate
-        self._set_slide_index(0 if self.playlist.get_slides() else -1) # Set index & update UI
-        self.update_ui_state() # Ensure buttons etc are correct
-
-
-    def load_playlist_dialog(self):
-        logger.debug("Opening load playlist dialog...")
-        default_dir = get_playlists_path()
-        fileName = get_themed_open_filename(self, "Open Playlist", default_dir, "JSON Files (*.json)")
-        if fileName:
-            self.load_playlist(fileName)
-
+    # --- START: populate_playlist_view method ---
     def populate_playlist_view(self):
         logger.debug("Populating playlist view...")
         self.playlist_view.clear()
@@ -406,10 +173,241 @@ class ControlWindow(QMainWindow):
             item.setToolTip("\n".join(tooltip_parts))
             item.setData(Qt.ItemDataRole.UserRole, i)
             self.playlist_view.addItem(item)
-
-        # This call was moved to update_ui_state, which is called by load_playlist later
-        # self.update_list_selection()
         logger.info(f"Playlist view populated with {self.playlist_view.count()} items.")
+    # --- END: populate_playlist_view method ---
+
+    def _set_slide_index(self, new_index):
+        slides = self.playlist.get_slides()
+        num_slides = len(slides)
+        old_index = self.current_index
+        changed = False
+
+        if not slides:
+            if self.current_index != -1:
+                self.current_index = -1
+                changed = True
+                logger.debug(f"Playlist empty, index set to -1 from {old_index}")
+        elif 0 <= new_index < num_slides:
+            if self.current_index != new_index:
+                self.current_index = new_index
+                changed = True
+                logger.debug(f"Slide index changed from {old_index} to {self.current_index}")
+        else:
+            if not (0 <= self.current_index < num_slides): # If current index is also bad
+                 self.current_index = -1 if slides else -1 # Reset to -1
+                 changed = (old_index != self.current_index)
+            logger.warning(f"Requested index {new_index} is out of bounds (0-{num_slides-1}). Index remains {self.current_index}.")
+
+        if changed:
+            self.update_ui_state()
+        return changed
+
+
+    def _display_current_slide(self):
+        self.slide_timer.stop()
+        slides = self.playlist.get_slides()
+
+        if not (0 <= self.current_index < len(slides)):
+            logger.warning(f"Cannot display: Invalid current_index {self.current_index}. Clearing display.")
+            self.clear_display_screen()
+            return
+
+        logger.info(f"Displaying slide {self.current_index + 1}.")
+        if self.display_window and not self.display_window.isVisible():
+            self.toggle_display_window_visibility()
+
+        slide_data = self.playlist.get_slide(self.current_index)
+        if not slide_data:
+             logger.critical(f"INCONSISTENCY: No slide_data for valid index {self.current_index}. Clearing.")
+             self.clear_display_screen()
+             return
+
+        self.is_displaying = True
+        self.display_window.display_images(slide_data.get("layers", []))
+
+        duration = slide_data.get("duration", 0)
+        if duration > 0:
+            self.slide_timer.start(duration)
+        self.update_ui_state()
+
+
+    def clear_display_screen(self):
+        if not self.is_displaying and not self.slide_timer.is_active():
+             return
+
+        logger.info("Clearing display screen.")
+        self.slide_timer.stop()
+        if self.display_window:
+            self.display_window.clear_display()
+        self.is_displaying = False
+        self.update_ui_state()
+
+
+    def update_ui_state(self):
+        self.update_list_selection()
+        self.update_show_clear_button_state()
+        slides = self.playlist.get_slides()
+        has_slides = bool(slides)
+        num_slides = len(slides)
+
+        self.prev_button.setEnabled(has_slides and self.current_index > 0)
+        self.next_button.setEnabled(has_slides and self.current_index < num_slides - 1)
+        self.show_clear_button.setEnabled(has_slides)
+
+
+    def update_list_selection(self):
+        logger.debug(f"Updating list selection to index {self.current_index}.")
+        item_to_select = None
+        if self.playlist_view.count() > 0:
+            for i in range(self.playlist_view.count()):
+                item = self.playlist_view.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) == self.current_index:
+                    item_to_select = item
+                    break
+        try:
+            self.playlist_view.currentItemChanged.disconnect(self.handle_list_selection)
+        except (TypeError, RuntimeError):
+            pass
+        self.playlist_view.setCurrentItem(item_to_select)
+        if item_to_select:
+            self.playlist_view.scrollToItem(item_to_select, QAbstractItemView.ScrollHint.PositionAtCenter)
+        self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
+
+
+    def update_show_clear_button_state(self):
+        if self.is_displaying:
+            self.show_clear_button.setText(" Clear")
+            self.show_clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
+            self.show_clear_button.setToolTip("Clear the display (Space or Esc)")
+        else:
+            self.show_clear_button.setText(" Show")
+            self.show_clear_button.setIcon(QIcon(get_icon_file_path("play.png")))
+            self.show_clear_button.setToolTip("Show the selected slide (Space)")
+
+
+    def handle_show_clear_click(self):
+        logger.debug("Show/Clear button clicked.")
+        if self.is_displaying:
+            self.clear_display_screen()
+        else:
+            slides = self.playlist.get_slides()
+            if not slides:
+                QMessageBox.information(self, "No Playlist", "Load a playlist to show a slide.")
+                return
+            if not (0 <= self.current_index < len(slides)):
+                self._set_slide_index(0)
+            self._display_current_slide()
+
+
+    def next_slide(self):
+        logger.debug("Next slide triggered.")
+        slides = self.playlist.get_slides()
+        if not slides or not (0 <= self.current_index < len(slides) - 1):
+            logger.info("Cannot go next: No slides or already at the end.")
+            return
+        self._set_slide_index(self.current_index + 1)
+        self._display_current_slide()
+
+
+    def prev_slide(self):
+        logger.debug("Previous slide triggered.")
+        if not self.playlist.get_slides() or self.current_index <= 0:
+            logger.info("Cannot go previous: No slides or already at the start.")
+            return
+        self._set_slide_index(self.current_index - 1)
+        self._display_current_slide()
+
+
+    def go_to_selected_slide_from_list(self, item: QListWidgetItem):
+        logger.debug("Slide list double-clicked.")
+        if item:
+            index = item.data(Qt.ItemDataRole.UserRole)
+            if self._set_slide_index(index):
+                self._display_current_slide()
+
+
+    def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
+        logger.debug("List selection changed via UI.")
+        if self.slide_timer.is_active():
+            self.slide_timer.stop()
+            logger.debug("Timer stopped due to list selection.")
+
+        if current_item:
+            self._set_slide_index(current_item.data(Qt.ItemDataRole.UserRole))
+        else:
+            self._set_slide_index(-1)
+
+
+    def auto_advance_or_loop_slide(self):
+        logger.debug("Timer triggered for auto-advance/loop.")
+        if not self.is_displaying:
+            logger.warning("Timer fired but not displaying. Stopping timer.")
+            self.slide_timer.stop()
+            return
+
+        slide_data = self.playlist.get_slide(self.current_index)
+        if not slide_data:
+            logger.warning("No current slide data for timer. Clearing display.")
+            self.clear_display_screen()
+            return
+
+        num_slides = len(self.playlist.get_slides())
+        loop_target_1_based = slide_data.get("loop_to_slide", 0)
+
+        if loop_target_1_based > 0:
+            loop_target_0_based = loop_target_1_based - 1
+            if 0 <= loop_target_0_based < num_slides:
+                 if loop_target_0_based == self.current_index:
+                      logger.debug(f"Slide {self.current_index + 1} loops to self. Advancing.")
+                      if self.current_index < num_slides - 1:
+                          self._set_slide_index(self.current_index + 1)
+                          self._display_current_slide()
+                      else:
+                          logger.info("Last slide looping to self. No further action.")
+                          self.slide_timer.stop()
+                 else:
+                    logger.info(f"Looping to slide {loop_target_1_based}.")
+                    self._set_slide_index(loop_target_0_based)
+                    self._display_current_slide()
+                 return
+            else:
+                 logger.warning(f"Invalid loop target ({loop_target_1_based}). Advancing instead.")
+
+        if self.current_index < num_slides - 1:
+            logger.info("Auto-advancing to next slide.")
+            self._set_slide_index(self.current_index + 1)
+            self._display_current_slide()
+        else:
+            logger.info("Timer expired on last slide, no loop/invalid loop. Stopping.")
+            self.clear_display_screen()
+
+
+    def load_playlist(self, file_path):
+        logger.info(f"Attempting to load playlist: {file_path}")
+        self.slide_timer.stop()
+        try:
+            self.playlist.load(file_path)
+            self.settings_manager.set_current_playlist(file_path)
+            logger.info(f"Successfully loaded: {file_path}")
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(f"Failed to load playlist {file_path}: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", str(e))
+            self.playlist = Playlist()
+            self.settings_manager.set_current_playlist(None)
+
+        self.clear_display_screen()
+        self.populate_playlist_view() # Make sure this is called
+        self._set_slide_index(0 if self.playlist.get_slides() else -1)
+        # update_ui_state is now called by _set_slide_index
+
+
+    def load_playlist_dialog(self):
+        logger.debug("Opening load playlist dialog...")
+        default_dir = get_playlists_path()
+        fileName = get_themed_open_filename(self, "Open Playlist", default_dir, "JSON Files (*.json)")
+        if fileName:
+            self.load_playlist(fileName)
+
 
     def load_last_playlist(self):
         last_playlist = self.settings_manager.get_current_playlist()
@@ -418,9 +416,9 @@ class ControlWindow(QMainWindow):
             self.load_playlist(last_playlist)
         else:
             logger.info("No last playlist found in settings.")
-            self.clear_display_screen() # Ensure clear state
+            self.clear_display_screen()
 
-    # --- Window Management ---
+
     def open_playlist_editor(self):
         logger.info("Opening playlist editor...")
         if self.editor_window is None or not self.editor_window.isVisible():
@@ -431,9 +429,11 @@ class ControlWindow(QMainWindow):
             self.editor_window.activateWindow()
             self.editor_window.raise_()
 
+
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
         logger.info(f"ControlWindow received signal to reload: {saved_playlist_path}")
         self.load_playlist(saved_playlist_path)
+
 
     def open_settings_window(self):
         logger.info("Opening settings window...")
@@ -443,6 +443,7 @@ class ControlWindow(QMainWindow):
         else:
             self.settings_window_instance.activateWindow()
             self.settings_window_instance.raise_()
+
 
     def toggle_display_window_visibility(self):
         if self.display_window:
@@ -455,25 +456,30 @@ class ControlWindow(QMainWindow):
                 self.toggle_display_button.setText("Hide Display")
                 self.toggle_display_button.setIcon(QIcon(get_icon_file_path("hide_display.png")))
 
+
     def close_application(self):
-        logger.info("Attempting to close application...")
-        self.close() # Trigger closeEvent
+        logger.info("Close application action initiated...")
+        self.close()
+
 
     def closeEvent(self, event):
         logger.debug("ControlWindow closeEvent triggered.")
         self.slide_timer.stop()
 
-        # Try to close child windows gracefully
         if self.editor_window and self.editor_window.isVisible():
-            if not self.editor_window.close(): # Let it prompt for save if needed
-                logger.warning("Editor close cancelled, aborting application close.")
+            logger.debug("Attempting to close PlaylistEditorWindow...")
+            if not self.editor_window.close():
+                logger.warning("PlaylistEditorWindow close cancelled, aborting application quit.")
                 event.ignore()
                 return
+
         if self.settings_window_instance and self.settings_window_instance.isVisible():
-             self.settings_window_instance.close()
-        if self.display_window:
+            logger.debug("Closing SettingsWindow...")
+            self.settings_window_instance.close()
+        if self.display_window and self.display_window.isVisible():
+            logger.debug("Closing DisplayWindow...")
             self.display_window.close()
 
-        logger.info("Quitting QApplication instance.")
+        logger.info("ControlWindow accepted close. Quitting QApplication.")
         QCoreApplication.instance().quit()
         event.accept()
