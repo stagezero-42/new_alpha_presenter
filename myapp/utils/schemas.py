@@ -4,6 +4,35 @@
 Defines the JSON schemas used for validation in the application.
 """
 
+# --- NEW SCHEMA ---
+# Schema for individual paragraph files (e.g., my_paragraph.json)
+PARAGRAPH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "sentences": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "delay_seconds": {
+                        "type": "number",
+                        "minimum": 0,
+                        "default": 0.0
+                    }
+                },
+                "required": ["text", "delay_seconds"],
+                "additionalProperties": False # Keep sentences strict
+            },
+            "default": []
+        }
+    },
+    "required": ["name", "sentences"],
+    "additionalProperties": False # Keep paragraphs strict
+}
+# --- END NEW SCHEMA ---
+
 # Schema for playlist files (playlist.json)
 PLAYLIST_SCHEMA = {
     "type": "object",
@@ -27,11 +56,27 @@ PLAYLIST_SCHEMA = {
                         "type": "integer",
                         "minimum": 0,
                         "default": 0
+                    },
+                    # --- NEW TEXT_OVERLAY FIELD ---
+                    "text_overlay": {
+                        "type": ["object", "null"], # Can be an object or null
+                        "properties": {
+                            "paragraph_name": {"type": "string"},
+                            "start_sentence": {"type": "integer", "minimum": 1},
+                            "end_sentence": {
+                                "oneOf": [
+                                    {"type": "integer", "minimum": 1},
+                                    {"type": "string", "pattern": "^all$"}
+                                ]
+                            }
+                        },
+                        "required": ["paragraph_name", "start_sentence", "end_sentence"],
+                        "additionalProperties": False
                     }
-                    # Add future slide properties here
+                    # --- END NEW TEXT_OVERLAY FIELD ---
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True # Allow for future additions
+                "additionalProperties": True # Allow for future additions like text_overlay
             },
             "default": []
         }
@@ -41,9 +86,6 @@ PLAYLIST_SCHEMA = {
 }
 
 # Schema for settings file (settings.json)
-# This schema is intentionally a bit lenient because the SettingsManager
-# merges loaded data with defaults and handles missing keys gracefully.
-# We mainly want to catch major structural errors or incorrect types.
 SETTINGS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -63,7 +105,6 @@ SETTINGS_SCHEMA = {
             },
             "additionalProperties": True
         },
-        # --- NEW LOGGING SETTINGS ---
         "log_level": {
             "type": "string",
             "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -77,7 +118,6 @@ SETTINGS_SCHEMA = {
             "type": "string",
             "default": "alphapresenter.log"
         }
-        # --- END NEW LOGGING SETTINGS ---
     },
     "additionalProperties": True
 }

@@ -27,20 +27,28 @@ def get_playlists_path():
     """Returns the path to the 'playlists' directory."""
     return os.path.join(get_assets_path(), "playlists")
 
-# --- NEW FUNCTION ---
 def get_playlist_file_path(playlist_name):
     """Returns the full path for a specific playlist file."""
     return os.path.join(get_playlists_path(), playlist_name)
-# --- END NEW FUNCTION ---
 
 def get_media_path():
     """Returns the path to the 'media' directory."""
     return os.path.join(get_assets_path(), "media")
 
-# --- NEW FUNCTION ---
 def get_media_file_path(media_name):
     """Returns the full path for a specific media file."""
     return os.path.join(get_media_path(), media_name)
+
+# --- NEW FUNCTION ---
+def get_texts_path():
+    """Returns the path to the 'texts' directory."""
+    return os.path.join(get_assets_path(), "texts")
+# --- END NEW FUNCTION ---
+
+# --- NEW FUNCTION ---
+def get_text_file_path(paragraph_name):
+    """Returns the full path for a specific paragraph .json file."""
+    return os.path.join(get_texts_path(), f"{paragraph_name}.json")
 # --- END NEW FUNCTION ---
 
 def get_settings_file_path():
@@ -53,3 +61,4 @@ def ensure_assets_folders_exist():
     os.makedirs(get_icons_path(), exist_ok=True)
     os.makedirs(get_playlists_path(), exist_ok=True)
     os.makedirs(get_media_path(), exist_ok=True)
+    os.makedirs(get_texts_path(), exist_ok=True) # --- ADDED ---
