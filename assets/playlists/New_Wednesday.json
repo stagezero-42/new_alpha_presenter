@@ -9,15 +9,15 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 0,
+            "duration": 10,
             "layers": [
                 "Venus_Orangutan.jpg"
             ],
             "loop_to_slide": 0,
             "text_overlay": {
-                "paragraph_name": "humpty_dumpty",
-                "start_sentence": 1,
-                "end_sentence": "all"
+                "end_sentence": 2,
+                "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 1
             }
         },
         {
@@ -25,20 +25,30 @@
             "layers": [
                 "Octo_Europa.jpg"
             ],
-            "loop_to_slide": 2
+            "loop_to_slide": 2,
+            "text_overlay": {
+                "end_sentence": 5,
+                "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 3
+            }
         },
         {
             "duration": 2,
             "layers": [
                 "mars_dolphin.jpg"
             ],
-            "loop_to_slide": 0
+            "loop_to_slide": 1,
+            "text_overlay": {
+                "end_sentence": 1,
+                "paragraph_name": "humpty_dumpty",
+                "start_sentence": 1
+            }
         },
         {
             "duration": 0,
             "layers": [
                 "360_F_399045106_wftUqluCDyqkVmUu79W2M6LnyjKSF482.jpg",
-                "SemiTransparent_green.png"
+                "SemiTransparent_White.png"
             ],
             "loop_to_slide": 0
         },

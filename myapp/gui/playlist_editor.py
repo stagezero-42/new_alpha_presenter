@@ -26,6 +26,7 @@ class PlaylistEditorWindow(QMainWindow):
 
     def __init__(self, display_window_instance, playlist_obj, parent=None):
         super().__init__(parent)
+        # ... (constructor parts remain largely the same) ...
         logger.debug(f"Initializing PlaylistEditorWindow. Current playlist has {len(playlist_obj.get_slides())} slides.")
         self.base_title = "Playlist Editor"
         self.display_window = display_window_instance
@@ -39,7 +40,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.text_editor_window_instance = None
 
         try:
-            icon_name = "edit.png" # Edit icon
+            icon_name = "edit.png"
             icon_path = get_icon_file_path(icon_name)
             if icon_path and os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
@@ -53,7 +54,9 @@ class PlaylistEditorWindow(QMainWindow):
         self.populate_list()
         logger.debug("PlaylistEditorWindow initialized.")
 
+
     def setup_ui(self):
+        # ... (setup_ui remains largely the same, check previous response for full code) ...
         logger.debug("Setting up PlaylistEditorWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -82,18 +85,14 @@ class PlaylistEditorWindow(QMainWindow):
 
         slide_controls_layout = QHBoxLayout()
         self.add_slide_button = create_button(" Add Slide", "add.png", on_click=self.add_slide)
-        self.edit_slide_button = create_button(" Edit Slide", "edit.png", on_click=self.edit_selected_slide_layers)
-        # --- MOVED/NEW BUTTON ---
-        self.edit_text_button = create_button(" Edit Text", "text.png", "Open Text Paragraph Editor", self.open_text_editor)
-        # --- END MOVED/NEW BUTTON ---
-        self.preview_slide_button = create_button(" Preview Slide", "preview.png", on_click=self.preview_selected_slide)
+        self.edit_slide_button = create_button(" Edit Slide Details", "edit.png", on_click=self.edit_selected_slide_layers) # Renamed for clarity
+        self.edit_text_button = create_button(" Edit Text Content", "text.png", "Open Text Paragraph Editor", self.open_text_editor)
+        self.preview_slide_button = create_button(" Preview Slide Images", "preview.png", on_click=self.preview_selected_slide) # Clarified
         self.remove_slide_button = create_button(" Remove Slide", "remove.png", on_click=self.remove_slide)
 
         slide_controls_layout.addWidget(self.add_slide_button)
         slide_controls_layout.addWidget(self.edit_slide_button)
-        # --- ADDED BUTTON HERE ---
         slide_controls_layout.addWidget(self.edit_text_button)
-        # --- END ADDED ---
         slide_controls_layout.addWidget(self.preview_slide_button)
         slide_controls_layout.addWidget(self.remove_slide_button)
         main_layout.addLayout(slide_controls_layout)
@@ -101,6 +100,64 @@ class PlaylistEditorWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         logger.debug("PlaylistEditorWindow UI setup complete.")
 
+
+    # --- MODIFIED: edit_slide_layers_dialog ---
+    def edit_slide_layers_dialog(self, item): # Renamed from edit_slide_details
+        row = self.playlist_list.row(item)
+        slide_data = self.playlist.get_slide(row)
+        if not slide_data:
+            logger.error(f"Could not retrieve slide data for row {row} during edit.")
+            return
+
+        logger.info(f"Opening layer/details editor for slide at index {row}.")
+        current_layers = slide_data.get("layers", [])
+        current_duration = slide_data.get("duration", 0)
+        current_loop_target = slide_data.get("loop_to_slide", 0)
+        # --- NEW: Get current text_overlay ---
+        current_text_overlay = slide_data.get("text_overlay", None) # Pass None if not present
+        # --- END NEW ---
+
+        # --- MODIFIED: Pass text_overlay to LayerEditorDialog ---
+        editor = LayerEditorDialog(current_layers, current_duration, current_loop_target,
+                                   current_text_overlay, # New argument
+                                   self.display_window, self)
+        # --- END MODIFIED ---
+
+        if editor.exec():
+            logger.info(f"Layer/details editor for slide {row} accepted.")
+            updated_data = editor.get_updated_slide_data() # This now includes text_overlay
+
+            # Check if any relevant data has changed
+            # --- MODIFIED: Include text_overlay in change check ---
+            old_text_overlay = slide_data.get("text_overlay")
+            new_text_overlay = updated_data.get("text_overlay")
+
+            layers_changed = slide_data.get("layers", []) != updated_data["layers"]
+            duration_changed = slide_data.get("duration", 0) != updated_data["duration"]
+            loop_changed = slide_data.get("loop_to_slide", 0) != updated_data["loop_to_slide"]
+            text_overlay_changed = old_text_overlay != new_text_overlay
+            # --- END MODIFIED ---
+
+            if layers_changed or duration_changed or loop_changed or text_overlay_changed:
+                logger.info(f"Slide {row} data changed. Updating playlist.")
+                slide_data["layers"] = updated_data["layers"]
+                slide_data["duration"] = updated_data["duration"]
+                slide_data["loop_to_slide"] = updated_data["loop_to_slide"]
+                # --- NEW: Set text_overlay ---
+                slide_data["text_overlay"] = new_text_overlay # Can be None if deselected
+                # --- END NEW ---
+                self.playlist.update_slide(row, slide_data)
+                self.mark_dirty()
+            else:
+                logger.info(f"Layer/details editor for slide {row} closed with no changes.")
+
+            self.populate_list() # Repopulate to reflect changes
+            self.playlist_list.setCurrentRow(row) # Reselect
+        else:
+            logger.info(f"Layer/details editor for slide {row} cancelled.")
+    # --- END MODIFIED ---
+
+    # ... (Other methods like open_text_editor, open_settings_window, etc. remain) ...
     def open_text_editor(self):
         """Opens the text editor window."""
         logger.info("Opening text editor window...")
@@ -111,11 +168,9 @@ class PlaylistEditorWindow(QMainWindow):
             self.text_editor_window_instance.activateWindow()
             self.text_editor_window_instance.raise_()
 
-    # ... (Rest of the methods remain unchanged) ...
     def open_settings_window(self):
         """Opens the settings editor window."""
         logger.info("Opening settings window...")
-        # Check if a window is already open, if so, just activate it
         if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
             self.settings_window_instance = SettingsWindow(self)
             self.settings_window_instance.show()
@@ -142,32 +197,35 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist_list.clear()
         for i, slide in enumerate(self.playlist.get_slides()):
             layers_str = ", ".join(slide.get("layers", []))
-            duration = slide.get("duration", 0)
+            duration = slide.get("duration", 0) # This is initial text delay if text is present
             loop_target = slide.get("loop_to_slide", 0)
-            text_info = slide.get("text_overlay") # Get text info
+            text_info = slide.get("text_overlay")
 
-            duration_info = f" ({duration}s"
-            if duration > 0 and loop_target > 0:
-                duration_info += f", Loop to S{loop_target})"
-            elif duration > 0:
-                duration_info += ")"
-            else:
-                duration_info = " (Manual"
-                if loop_target > 0:
-                    duration_info += f", Loop to S{loop_target} inactive)"
-                else:
-                    duration_info += ")"
-
-            item_text = f"Slide {i + 1}{duration_info}: {layers_str if layers_str else '[Empty Slide]'}"
-            # Add text indicator if present
+            # Build the display string
+            base_item_text = f"Slide {i + 1}"
+            details = []
             if text_info and text_info.get("paragraph_name"):
-                 item_text += f" [Txt: {text_info['paragraph_name']}]"
+                details.append(f"Txt: {text_info['paragraph_name']} (Delay: {duration}s)")
+                if loop_target > 0 and duration > 0 : # Loop needs delay to be active for text
+                    details.append(f"Loop to S{loop_target}")
+            else: # No text overlay
+                if duration > 0:
+                    details.append(f"{duration}s")
+                else:
+                    details.append("Manual")
+                if loop_target > 0 and duration > 0:
+                    details.append(f"Loop to S{loop_target}")
+                elif loop_target > 0 and duration == 0: # loop inactive
+                     details.append(f"Loop to S{loop_target} (inactive)")
 
+
+            item_text = f"{base_item_text} ({', '.join(details)}): {layers_str if layers_str else '[Empty Slide]'}"
 
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(item)
         logger.info(f"Playlist list populated with {self.playlist_list.count()} items.")
+
 
     def update_playlist_from_list_order(self):
         logger.debug("Updating internal playlist order from list widget.")
@@ -195,7 +253,7 @@ class PlaylistEditorWindow(QMainWindow):
     def add_slide(self):
         logger.info("Add slide action triggered.")
         self.update_playlist_from_list_order()
-        new_slide = {"layers": [], "duration": 0, "loop_to_slide": 0}
+        new_slide = {"layers": [], "duration": 0, "loop_to_slide": 0, "text_overlay": None} # Ensure text_overlay key
         self.playlist.add_slide(new_slide)
         self.populate_list()
         new_slide_index = self.playlist_list.count() - 1
@@ -225,43 +283,6 @@ class PlaylistEditorWindow(QMainWindow):
             return
         self.edit_slide_layers_dialog(current_item)
 
-    def edit_slide_layers_dialog(self, item):
-        row = self.playlist_list.row(item)
-        slide_data = self.playlist.get_slide(row)
-        if not slide_data:
-            logger.error(f"Could not retrieve slide data for row {row} during edit.")
-            return
-
-        logger.info(f"Opening layer editor for slide at index {row}.")
-        current_layers = slide_data.get("layers", [])
-        current_duration = slide_data.get("duration", 0)
-        current_loop_target = slide_data.get("loop_to_slide", 0)
-
-        editor = LayerEditorDialog(current_layers, current_duration, current_loop_target, self.display_window, self)
-
-        if editor.exec():
-            logger.info(f"Layer editor for slide {row} accepted.")
-            updated_data = editor.get_updated_slide_data()
-
-            changed = (slide_data.get("layers", []) != updated_data["layers"] or \
-                       slide_data.get("duration", 0) != updated_data["duration"] or \
-                       slide_data.get("loop_to_slide", 0) != updated_data["loop_to_slide"])
-
-            if changed:
-                logger.info(f"Slide {row} data changed. Updating playlist.")
-                slide_data["layers"] = updated_data["layers"]
-                slide_data["duration"] = updated_data["duration"]
-                slide_data["loop_to_slide"] = updated_data["loop_to_slide"]
-                self.playlist.update_slide(row, slide_data)
-                self.mark_dirty()
-            else:
-                logger.info(f"Layer editor for slide {row} closed with no changes.")
-
-            self.populate_list()
-            self.playlist_list.setCurrentRow(row)
-        else:
-            logger.info(f"Layer editor for slide {row} cancelled.")
-
 
     def preview_selected_slide(self):
         logger.debug("Preview selected slide action triggered.")
@@ -278,7 +299,11 @@ class PlaylistEditorWindow(QMainWindow):
         if slide_data:
             layers_to_preview = slide_data.get("layers", [])
             logger.info(f"Previewing slide at index {row} with layers: {layers_to_preview}")
+            # This preview currently does not show text as that's handled by ControlWindow's state
             self.display_window.display_images(layers_to_preview)
+            if slide_data.get("text_overlay"):
+                QMessageBox.information(self, "Text Preview", "Text overlay preview is active on the main display window if slide is shown via Control Window.")
+
 
     def load_playlist_dialog(self):
         logger.info("Load playlist dialog action triggered.")

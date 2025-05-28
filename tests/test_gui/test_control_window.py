@@ -6,15 +6,18 @@ import json
 from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QApplication
 
+# Ensure the myapp structure can be imported
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from myapp.gui.control_window import ControlWindow
-from myapp.media.media_renderer import MediaRenderer
+from myapp.media.media_renderer import MediaRenderer # Keep for spec
 from myapp.playlist.playlist import Playlist
-from myapp.settings.settings_manager import SettingsManager
+# SettingsManager is mocked, so direct import isn't strictly needed here for tests
+# from myapp.settings.settings_manager import SettingsManager
 
 @pytest.fixture(scope="session")
 def qapp():
+    """Ensures a QApplication instance exists for the test session."""
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
@@ -22,27 +25,34 @@ def qapp():
 
 @pytest.fixture
 def mock_media_renderer():
-    return MagicMock(spec=MediaRenderer)
+    """Creates a MagicMock for the MediaRenderer."""
+    renderer_mock = MagicMock(spec=MediaRenderer)
+    # --- ADDED: Ensure text_item attribute exists on the mock ---
+    renderer_mock.text_item = None # Mimic the initial state in MediaRenderer
+    # --- END ADDED ---
+    return renderer_mock
 
 @pytest.fixture
-def control_window(qapp, mock_media_renderer):
+def control_window(qapp, mock_media_renderer): # qapp ensures QApplication is initialized
     """Creates a ControlWindow instance with mocked dependencies."""
     with patch('myapp.gui.control_window.SettingsManager') as MockSM:
         MockSM.return_value.get_current_playlist.return_value = None
-        MockSM.return_value.get_setting.return_value = {}
+        MockSM.return_value.get_setting.return_value = {} # Default for settings
         with patch('myapp.gui.control_window.os.path.exists', return_value=True): # For icon loading
             with patch('myapp.gui.control_window.get_icon_file_path', return_value="dummy.png"):
                 with patch('myapp.gui.control_window.setup_keybindings') as mock_setup_keys:
                      window = ControlWindow(mock_media_renderer)
                      mock_setup_keys.assert_called_once_with(window, window.settings_manager)
+    # Patch the playlist after ControlWindow initialization if methods are called directly
     window.playlist = MagicMock(spec=Playlist)
     return window
 
 @pytest.fixture
 def valid_playlist_path(tmp_path):
+    """Creates a temporary valid playlist file."""
     playlist_dir = tmp_path / "playlists"
     playlist_dir.mkdir()
-    playlist_content = {"slides": [{"layers": ["image1.png"], "duration": 5, "loop_to_slide": 0}]}
+    playlist_content = {"slides": [{"layers": ["image1.png"], "duration": 5, "loop_to_slide": 0, "text_overlay": None}]}
     playlist_path = playlist_dir / "test_playlist.json"
     with open(playlist_path, "w") as f:
         json.dump(playlist_content, f)
@@ -61,28 +71,23 @@ def test_load_playlist_dialog_opens_and_loads(mock_get_themed_open_filename, con
               )
               mock_load.assert_called_once_with(valid_playlist_path)
 
-# --- MODIFIED TEST ---
 def test_next_slide_updates_state_and_attempts_display(control_window):
+    # Configure the mock playlist on the control_window instance
     control_window.playlist.get_slides.return_value = [
-        {"layers": ["img1.png"], "duration": 5, "loop_to_slide": 0},
-        {"layers": ["img2.png"], "duration": 0, "loop_to_slide": 0}
+        {"layers": ["img1.png"], "duration": 5, "loop_to_slide": 0, "text_overlay": None},
+        {"layers": ["img2.png"], "duration": 0, "loop_to_slide": 0, "text_overlay": None}
     ]
     control_window.current_index = 0 # Start at the first slide
 
-    # We expect _display_current_slide to be called when next_slide successfully moves to a new slide
+    # We expect _display_current_slide to be called when next_slide successfully moves
     with patch.object(control_window, '_display_current_slide') as mock_display_current:
         control_window.next_slide()
-        # Assert that the index changed correctly
         assert control_window.current_index == 1
-        # Assert that the method responsible for updating the display was called
         mock_display_current.assert_called_once()
 
     # Test boundary condition: already at the last slide
     control_window.current_index = 1 # Move to the last slide
     with patch.object(control_window, '_display_current_slide') as mock_display_current_again:
         control_window.next_slide()
-        # Index should not change
         assert control_window.current_index == 1
-        # Display method should NOT be called again
         mock_display_current_again.assert_not_called()
-# --- END MODIFIED TEST ---
