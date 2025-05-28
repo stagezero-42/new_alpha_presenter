@@ -1,0 +1,21 @@
+{
+    "name": "humpty_dumpty",
+    "sentences": [
+        {
+            "text": "Humpty Dumpty sat on a wall,",
+            "delay_seconds": 0.0
+        },
+        {
+            "text": "Humpty Dumpty had a great fall.",
+            "delay_seconds": 0.0
+        },
+        {
+            "text": "All the king's horses and all the king's men",
+            "delay_seconds": 0.0
+        },
+        {
+            "text": "Couldn't put Humpty together again.",
+            "delay_seconds": 0.0
+        }
+    ]
+}

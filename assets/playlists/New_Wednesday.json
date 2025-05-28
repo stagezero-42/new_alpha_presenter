@@ -1,0 +1,112 @@
+{
+    "slides": [
+        {
+            "duration": 2,
+            "layers": [
+                "Space_orca.jpg",
+                "dummy_vector.svg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "Venus_Orangutan.jpg"
+            ],
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "paragraph_name": "humpty_dumpty",
+                "start_sentence": 1,
+                "end_sentence": "all"
+            }
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "Octo_Europa.jpg"
+            ],
+            "loop_to_slide": 2
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "mars_dolphin.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "360_F_399045106_wftUqluCDyqkVmUu79W2M6LnyjKSF482.jpg",
+                "SemiTransparent_green.png"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "dolphin_in_space.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "Octo_Europa_001.jpg",
+                "SemiTransparent_green.png"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "dolphin.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "dead_on_mars.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "dummy_static.gif",
+                "dummy_vector.svg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 2,
+            "layers": [
+                "Beached drones.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 5,
+            "layers": [
+                "dummy_opaque_001.jpg",
+                "dummy_transparent_partial_001.png"
+            ],
+            "loop_to_slide": 1
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "360_F_121064813_5CONOqmYSLyCLJlkRn3FsUl8733cg2qc.jpg"
+            ],
+            "loop_to_slide": 0
+        },
+        {
+            "duration": 0,
+            "layers": [
+                "istockphoto-1442179368-612x612.jpg"
+            ],
+            "loop_to_slide": 0
+        }
+    ]
+}

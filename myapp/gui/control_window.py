@@ -14,6 +14,9 @@ from .file_dialog_helpers import get_themed_open_filename
 from .playlist_editor import PlaylistEditorWindow
 from .settings_window import SettingsWindow
 from ..playlist.playlist import Playlist
+# --- NEW IMPORT ---
+from ..text.paragraph_manager import ParagraphManager
+# --- END NEW IMPORT ---
 from ..utils.paths import get_icon_file_path, get_playlists_path
 from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
@@ -53,8 +56,18 @@ class ControlWindow(QMainWindow):
 
         self.settings_manager = SettingsManager()
         self.playlist = Playlist()
+        # --- NEW: ParagraphManager ---
+        self.paragraph_manager = ParagraphManager()
+        # --- END NEW ---
         self.current_index = -1
         self.is_displaying = False
+
+        # --- NEW: Text State Variables ---
+        self.current_paragraph_data = None # Holds the loaded paragraph dict
+        self.current_sentence_index = -1 # 0-based index for sentences
+        self.text_start_index = -1       # 0-based start index for current slide
+        self.text_end_index = -1         # 0-based end index for current slide
+        # --- END NEW ---
 
         self.editor_window = None
         self.settings_window_instance = None
@@ -70,6 +83,7 @@ class ControlWindow(QMainWindow):
         logger.debug("ControlWindow initialization complete.")
 
     def _load_indicator_icons(self):
+        # ... (This method remains unchanged) ...
         logger.debug("Loading indicator icons...")
         icons = {}
         icon_files = { "slide": "slide_icon.png", "timer": "timer_icon.png", "loop": "loop_icon.png" }
@@ -96,6 +110,7 @@ class ControlWindow(QMainWindow):
         return icons
 
     def setup_ui(self):
+        # ... (This method remains unchanged) ...
         logger.debug("Setting up ControlWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -144,8 +159,9 @@ class ControlWindow(QMainWindow):
         self.resize(600, 350)
         logger.debug("ControlWindow UI setup complete.")
 
-    # --- START: populate_playlist_view method ---
+
     def populate_playlist_view(self):
+        # ... (This method remains unchanged) ...
         logger.debug("Populating playlist view...")
         self.playlist_view.clear()
 
@@ -174,9 +190,9 @@ class ControlWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, i)
             self.playlist_view.addItem(item)
         logger.info(f"Playlist view populated with {self.playlist_view.count()} items.")
-    # --- END: populate_playlist_view method ---
 
     def _set_slide_index(self, new_index):
+        # ... (This method remains unchanged) ...
         slides = self.playlist.get_slides()
         num_slides = len(slides)
         old_index = self.current_index
@@ -203,8 +219,48 @@ class ControlWindow(QMainWindow):
         return changed
 
 
+    # --- NEW: Reset Text State ---
+    def _reset_text_state(self):
+        """Clears all internal text-related state variables."""
+        logger.debug("Resetting text state.")
+        self.current_paragraph_data = None
+        self.current_sentence_index = -1
+        self.text_start_index = -1
+        self.text_end_index = -1
+        if self.display_window:
+             self.display_window.clearText() # Also clear renderer
+    # --- END NEW ---
+
+
+    # --- NEW: Display Current Sentence ---
+    def _display_current_sentence(self):
+        """Displays the sentence based on current_sentence_index."""
+        if not self.current_paragraph_data or self.current_sentence_index < 0:
+            logger.debug("_display_current_sentence called but no text active.")
+            if self.display_window:
+                self.display_window.clearText()
+            return
+
+        sentences = self.current_paragraph_data.get("sentences", [])
+        if self.text_start_index <= self.current_sentence_index <= self.text_end_index:
+            sentence_data = sentences[self.current_sentence_index]
+            text = sentence_data.get("text", "")
+            delay = sentence_data.get("delay_seconds", 0.0)
+            logger.info(f"Displaying sentence {self.current_sentence_index + 1}: '{text}'")
+            if self.display_window:
+                self.display_window.displayText(text)
+            # TODO: Implement timer logic based on 'delay' here later.
+        else:
+            logger.warning(f"Sentence index {self.current_sentence_index} out of range ({self.text_start_index}-{self.text_end_index}). Clearing text.")
+            self._reset_text_state() # Clear if out of bounds
+
+    # --- END NEW ---
+
+    # --- MODIFIED: _display_current_slide ---
     def _display_current_slide(self):
         self.slide_timer.stop()
+        self._reset_text_state() # Reset text state before displaying *any* slide
+
         slides = self.playlist.get_slides()
 
         if not (0 <= self.current_index < len(slides)):
@@ -222,16 +278,61 @@ class ControlWindow(QMainWindow):
              self.clear_display_screen()
              return
 
+        # Display images first
         self.is_displaying = True
         self.display_window.display_images(slide_data.get("layers", []))
 
-        duration = slide_data.get("duration", 0)
-        if duration > 0:
-            self.slide_timer.start(duration)
+        # --- NEW: Handle Text Overlay ---
+        text_overlay_info = slide_data.get("text_overlay")
+        if text_overlay_info:
+            para_name = text_overlay_info.get("paragraph_name")
+            start_sent_1based = text_overlay_info.get("start_sentence")
+            end_sent = text_overlay_info.get("end_sentence")
+
+            if para_name and start_sent_1based and end_sent:
+                try:
+                    self.current_paragraph_data = self.paragraph_manager.load_paragraph(para_name)
+                    if self.current_paragraph_data:
+                        num_para_sentences = len(self.current_paragraph_data.get("sentences", []))
+                        self.text_start_index = start_sent_1based - 1 # Convert to 0-based
+                        if end_sent == "all":
+                            self.text_end_index = num_para_sentences - 1
+                        else:
+                            self.text_end_index = end_sent - 1 # Convert to 0-based
+
+                        # Validate indices
+                        if 0 <= self.text_start_index < num_para_sentences and \
+                           self.text_start_index <= self.text_end_index < num_para_sentences:
+                           self.current_sentence_index = self.text_start_index
+                           self._display_current_sentence() # Display the first sentence
+                        else:
+                           logger.error(f"Invalid sentence range ({start_sent_1based}-{end_sent}) for paragraph '{para_name}' ({num_para_sentences} sentences). No text shown.")
+                           self._reset_text_state()
+                    else:
+                        logger.error(f"Failed to load paragraph '{para_name}'. No text shown.")
+                        QMessageBox.warning(self, "Text Error", f"Could not load paragraph: {para_name}")
+                except (FileNotFoundError, ValueError) as e:
+                    logger.error(f"Error loading paragraph '{para_name}': {e}", exc_info=True)
+                    QMessageBox.warning(self, "Text Error", f"Could not load paragraph '{para_name}':\n{e}")
+                    self._reset_text_state()
+            else:
+                logger.warning(f"Slide {self.current_index + 1} has incomplete text_overlay data.")
+        # --- END NEW ---
+
+        # Start slide timer ONLY if no text is active (text handles its own timing later)
+        if self.current_sentence_index == -1:
+             duration = slide_data.get("duration", 0)
+             if duration > 0:
+                 self.slide_timer.start(duration)
+
         self.update_ui_state()
+    # --- END MODIFIED ---
 
 
     def clear_display_screen(self):
+        # --- MODIFIED: Ensure text state is reset ---
+        self._reset_text_state()
+        # --- END MODIFIED ---
         if not self.is_displaying and not self.slide_timer.is_active():
              return
 
@@ -244,18 +345,20 @@ class ControlWindow(QMainWindow):
 
 
     def update_ui_state(self):
+        # ... (This method remains unchanged) ...
         self.update_list_selection()
         self.update_show_clear_button_state()
         slides = self.playlist.get_slides()
         has_slides = bool(slides)
         num_slides = len(slides)
 
-        self.prev_button.setEnabled(has_slides and self.current_index > 0)
-        self.next_button.setEnabled(has_slides and self.current_index < num_slides - 1)
+        self.prev_button.setEnabled(has_slides and (self.current_index > 0 or self.current_sentence_index > self.text_start_index))
+        self.next_button.setEnabled(has_slides and (self.current_index < num_slides - 1 or self.current_sentence_index < self.text_end_index))
         self.show_clear_button.setEnabled(has_slides)
 
 
     def update_list_selection(self):
+        # ... (This method remains unchanged) ...
         logger.debug(f"Updating list selection to index {self.current_index}.")
         item_to_select = None
         if self.playlist_view.count() > 0:
@@ -275,6 +378,7 @@ class ControlWindow(QMainWindow):
 
 
     def update_show_clear_button_state(self):
+        # ... (This method remains unchanged) ...
         if self.is_displaying:
             self.show_clear_button.setText(" Clear")
             self.show_clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
@@ -286,6 +390,7 @@ class ControlWindow(QMainWindow):
 
 
     def handle_show_clear_click(self):
+        # ... (This method remains unchanged) ...
         logger.debug("Show/Clear button clicked.")
         if self.is_displaying:
             self.clear_display_screen()
@@ -299,26 +404,59 @@ class ControlWindow(QMainWindow):
             self._display_current_slide()
 
 
+    # --- MODIFIED: next_slide ---
     def next_slide(self):
         logger.debug("Next slide triggered.")
+
+        # If text is currently active, try to advance the sentence first
+        if self.current_sentence_index != -1 and self.current_paragraph_data:
+            if self.current_sentence_index < self.text_end_index:
+                self.current_sentence_index += 1
+                self._display_current_sentence()
+                self.update_ui_state() # Update button states
+                return # Don't advance the slide yet
+
+        # If we reached here, it means either no text was active,
+        # or we just finished the last sentence. Proceed to next slide.
+        self._reset_text_state() # Ensure text is cleared before next slide
+
         slides = self.playlist.get_slides()
         if not slides or not (0 <= self.current_index < len(slides) - 1):
             logger.info("Cannot go next: No slides or already at the end.")
             return
+
         self._set_slide_index(self.current_index + 1)
-        self._display_current_slide()
+        self._display_current_slide() # This will handle displaying the new slide (and its text, if any)
+    # --- END MODIFIED ---
 
 
+    # --- MODIFIED: prev_slide ---
     def prev_slide(self):
         logger.debug("Previous slide triggered.")
+
+        # If text is currently active and not the first sentence, go back one sentence
+        if self.current_sentence_index != -1 and self.current_paragraph_data:
+             if self.current_sentence_index > self.text_start_index:
+                 self.current_sentence_index -= 1
+                 self._display_current_sentence()
+                 self.update_ui_state() # Update button states
+                 return # Don't go to previous slide yet
+
+        # If we reached here, it means either no text was active,
+        # or we were at the first sentence. Proceed to previous slide.
+        self._reset_text_state() # Ensure text is cleared before prev slide
+
         if not self.playlist.get_slides() or self.current_index <= 0:
             logger.info("Cannot go previous: No slides or already at the start.")
             return
+
         self._set_slide_index(self.current_index - 1)
-        self._display_current_slide()
+        self._display_current_slide() # This will handle displaying the new slide (and its text, if any)
+    # --- END MODIFIED ---
 
 
     def go_to_selected_slide_from_list(self, item: QListWidgetItem):
+        # ... (This method remains unchanged) ...
         logger.debug("Slide list double-clicked.")
         if item:
             index = item.data(Qt.ItemDataRole.UserRole)
@@ -327,6 +465,7 @@ class ControlWindow(QMainWindow):
 
 
     def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
+        # ... (This method remains unchanged) ...
         logger.debug("List selection changed via UI.")
         if self.slide_timer.is_active():
             self.slide_timer.stop()
@@ -339,7 +478,17 @@ class ControlWindow(QMainWindow):
 
 
     def auto_advance_or_loop_slide(self):
+        # --- MODIFIED: Check text first ---
         logger.debug("Timer triggered for auto-advance/loop.")
+        # If text is active, this timer shouldn't be running (yet)
+        # We will add sentence timing later. For now, assume this only
+        # runs when a slide (without text) has a duration.
+        if self.current_sentence_index != -1:
+            logger.warning("Slide timer fired while text is active. This shouldn't happen yet. Stopping.")
+            self.slide_timer.stop()
+            return
+        # --- END MODIFIED ---
+
         if not self.is_displaying:
             logger.warning("Timer fired but not displaying. Stopping timer.")
             self.slide_timer.stop()
@@ -360,8 +509,7 @@ class ControlWindow(QMainWindow):
                  if loop_target_0_based == self.current_index:
                       logger.debug(f"Slide {self.current_index + 1} loops to self. Advancing.")
                       if self.current_index < num_slides - 1:
-                          self._set_slide_index(self.current_index + 1)
-                          self._display_current_slide()
+                          self.next_slide() # Use next_slide now
                       else:
                           logger.info("Last slide looping to self. No further action.")
                           self.slide_timer.stop()
@@ -375,16 +523,18 @@ class ControlWindow(QMainWindow):
 
         if self.current_index < num_slides - 1:
             logger.info("Auto-advancing to next slide.")
-            self._set_slide_index(self.current_index + 1)
-            self._display_current_slide()
+            self.next_slide() # Use next_slide now
         else:
             logger.info("Timer expired on last slide, no loop/invalid loop. Stopping.")
             self.clear_display_screen()
 
 
     def load_playlist(self, file_path):
+        # --- MODIFIED: Reset text state on load ---
         logger.info(f"Attempting to load playlist: {file_path}")
         self.slide_timer.stop()
+        self._reset_text_state() # Reset text
+        # --- END MODIFIED ---
         try:
             self.playlist.load(file_path)
             self.settings_manager.set_current_playlist(file_path)
@@ -396,12 +546,12 @@ class ControlWindow(QMainWindow):
             self.settings_manager.set_current_playlist(None)
 
         self.clear_display_screen()
-        self.populate_playlist_view() # Make sure this is called
+        self.populate_playlist_view()
         self._set_slide_index(0 if self.playlist.get_slides() else -1)
-        # update_ui_state is now called by _set_slide_index
 
 
     def load_playlist_dialog(self):
+        # ... (This method remains unchanged) ...
         logger.debug("Opening load playlist dialog...")
         default_dir = get_playlists_path()
         fileName = get_themed_open_filename(self, "Open Playlist", default_dir, "JSON Files (*.json)")
@@ -410,6 +560,7 @@ class ControlWindow(QMainWindow):
 
 
     def load_last_playlist(self):
+        # ... (This method remains unchanged) ...
         last_playlist = self.settings_manager.get_current_playlist()
         if last_playlist:
             logger.info(f"Loading last used playlist: {last_playlist}")
@@ -420,6 +571,7 @@ class ControlWindow(QMainWindow):
 
 
     def open_playlist_editor(self):
+        # ... (This method remains unchanged) ...
         logger.info("Opening playlist editor...")
         if self.editor_window is None or not self.editor_window.isVisible():
             self.editor_window = PlaylistEditorWindow(self.display_window, self.playlist, self)
@@ -431,11 +583,13 @@ class ControlWindow(QMainWindow):
 
 
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
+        # ... (This method remains unchanged) ...
         logger.info(f"ControlWindow received signal to reload: {saved_playlist_path}")
         self.load_playlist(saved_playlist_path)
 
 
     def open_settings_window(self):
+        # ... (This method remains unchanged) ...
         logger.info("Opening settings window...")
         if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
             self.settings_window_instance = SettingsWindow(self)
@@ -446,6 +600,7 @@ class ControlWindow(QMainWindow):
 
 
     def toggle_display_window_visibility(self):
+        # ... (This method remains unchanged) ...
         if self.display_window:
             if self.display_window.isVisible():
                 self.display_window.hide()
@@ -458,11 +613,13 @@ class ControlWindow(QMainWindow):
 
 
     def close_application(self):
+        # ... (This method remains unchanged) ...
         logger.info("Close application action initiated...")
         self.close()
 
 
     def closeEvent(self, event):
+        # ... (This method remains unchanged) ...
         logger.debug("ControlWindow closeEvent triggered.")
         self.slide_timer.stop()
 
