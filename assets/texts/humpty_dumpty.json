@@ -16,6 +16,14 @@
         {
             "text": "Couldn't put Humpty together again.",
             "delay_seconds": 0.0
+        },
+        {
+            "text": "Poor old Humpty",
+            "delay_seconds": 0.0
+        },
+        {
+            "text": "Here is a new one",
+            "delay_seconds": 0.0
         }
     ]
 }

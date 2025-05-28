@@ -4,19 +4,15 @@ import logging
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QListWidget, QMessageBox,
-    QListWidgetItem, QAbstractItemView, QFrame # Removed QInputDialog, QFileDialog
+    QListWidgetItem, QAbstractItemView, QFrame
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 
-# --- MODIFIED: Import new helpers ---
 from .file_dialog_helpers import get_themed_open_filename, get_themed_save_filename
-# --- END MODIFIED ---
 from .layer_editor_dialog import LayerEditorDialog
-
-# --- MODIFIED: Import SettingsWindow ---
 from .settings_window import SettingsWindow
-# --- END MODIFIED ---
+from .text_editor_window import TextEditorWindow
 
 from ..playlist.playlist import Playlist
 from ..utils.paths import get_playlists_path, get_media_path, get_playlist_file_path, get_icon_file_path
@@ -40,18 +36,17 @@ class PlaylistEditorWindow(QMainWindow):
         self.setGeometry(100, 100, 700, 600)
         self.setWindowModified(False)
         self.settings_window_instance = None
-        # --- ADD THIS CODE ---
+        self.text_editor_window_instance = None
+
         try:
             icon_name = "edit.png" # Edit icon
             icon_path = get_icon_file_path(icon_name)
             if icon_path and os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
-                logger.debug(f"Set window icon for PlaylistEditor from: {icon_path}")
             else:
                 logger.warning(f"PlaylistEditor icon '{icon_name}' not found.")
         except Exception as e:
             logger.error(f"Failed to set PlaylistEditor window icon: {e}", exc_info=True)
-        # --- END OF ADDED CODE ---
 
         self.setup_ui()
         self.update_title()
@@ -68,9 +63,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.load_button = create_button(" Load", "load.png", on_click=self.load_playlist_dialog)
         self.save_button = create_button(" Save", "save.png", on_click=self.save_playlist)
         self.save_as_button = create_button(" Save As...", "save.png", on_click=self.save_playlist_as)
-
         self.settings_button = create_button(" Settings", "settings.png", on_click=self.open_settings_window)
-
         self.done_button = create_button(" Done", "done.png", on_click=self.close)
 
         toolbar_layout.addWidget(self.new_button)
@@ -78,9 +71,7 @@ class PlaylistEditorWindow(QMainWindow):
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
-
         toolbar_layout.addWidget(self.settings_button)
-
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
@@ -92,11 +83,17 @@ class PlaylistEditorWindow(QMainWindow):
         slide_controls_layout = QHBoxLayout()
         self.add_slide_button = create_button(" Add Slide", "add.png", on_click=self.add_slide)
         self.edit_slide_button = create_button(" Edit Slide", "edit.png", on_click=self.edit_selected_slide_layers)
+        # --- MOVED/NEW BUTTON ---
+        self.edit_text_button = create_button(" Edit Text", "text.png", "Open Text Paragraph Editor", self.open_text_editor)
+        # --- END MOVED/NEW BUTTON ---
         self.preview_slide_button = create_button(" Preview Slide", "preview.png", on_click=self.preview_selected_slide)
         self.remove_slide_button = create_button(" Remove Slide", "remove.png", on_click=self.remove_slide)
 
         slide_controls_layout.addWidget(self.add_slide_button)
         slide_controls_layout.addWidget(self.edit_slide_button)
+        # --- ADDED BUTTON HERE ---
+        slide_controls_layout.addWidget(self.edit_text_button)
+        # --- END ADDED ---
         slide_controls_layout.addWidget(self.preview_slide_button)
         slide_controls_layout.addWidget(self.remove_slide_button)
         main_layout.addLayout(slide_controls_layout)
@@ -104,6 +101,17 @@ class PlaylistEditorWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         logger.debug("PlaylistEditorWindow UI setup complete.")
 
+    def open_text_editor(self):
+        """Opens the text editor window."""
+        logger.info("Opening text editor window...")
+        if self.text_editor_window_instance is None or not self.text_editor_window_instance.isVisible():
+            self.text_editor_window_instance = TextEditorWindow(self)
+            self.text_editor_window_instance.show()
+        else:
+            self.text_editor_window_instance.activateWindow()
+            self.text_editor_window_instance.raise_()
+
+    # ... (Rest of the methods remain unchanged) ...
     def open_settings_window(self):
         """Opens the settings editor window."""
         logger.info("Opening settings window...")
@@ -136,6 +144,7 @@ class PlaylistEditorWindow(QMainWindow):
             layers_str = ", ".join(slide.get("layers", []))
             duration = slide.get("duration", 0)
             loop_target = slide.get("loop_to_slide", 0)
+            text_info = slide.get("text_overlay") # Get text info
 
             duration_info = f" ({duration}s"
             if duration > 0 and loop_target > 0:
@@ -150,6 +159,10 @@ class PlaylistEditorWindow(QMainWindow):
                     duration_info += ")"
 
             item_text = f"Slide {i + 1}{duration_info}: {layers_str if layers_str else '[Empty Slide]'}"
+            # Add text indicator if present
+            if text_info and text_info.get("paragraph_name"):
+                 item_text += f" [Txt: {text_info['paragraph_name']}]"
+
 
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, slide)
@@ -275,10 +288,8 @@ class PlaylistEditorWindow(QMainWindow):
                 logger.info("Load playlist action cancelled by user at save prompt.")
                 return
 
-        # --- MODIFIED: Use new helper ---
         file_name = get_themed_open_filename(self, "Load Playlist", self.playlists_base_dir,
                                              "JSON Files (*.json)")
-        # --- END MODIFIED ---
 
         if file_name:
             logger.info(f"User selected playlist file to load: {file_name}")
@@ -319,7 +330,6 @@ class PlaylistEditorWindow(QMainWindow):
         logger.info("Save playlist as action triggered.")
         self.update_playlist_from_list_order()
 
-        # --- MODIFIED: Use QFileDialog via helper ---
         full_save_path = get_themed_save_filename(self, "Save Playlist As",
                                                    self.playlists_base_dir,
                                                    "JSON Files (*.json)")
@@ -328,13 +338,11 @@ class PlaylistEditorWindow(QMainWindow):
             filename = os.path.basename(full_save_path)
             logger.debug(f"User selected filename for Save As: {filename} ({full_save_path})")
 
-            # Ensure .json extension if QFileDialog didn't add it
             if not filename.lower().endswith('.json'):
                 full_save_path += '.json'
                 filename += '.json'
                 logger.debug(f"Appended .json extension, path is now: {full_save_path}")
 
-            # Security check on the final basename
             if not is_safe_filename_component(filename):
                 logger.error(f"Save As failed: unsafe filename '{filename}' provided.")
                 QMessageBox.critical(self, "Save Error",
@@ -342,7 +350,6 @@ class PlaylistEditorWindow(QMainWindow):
                                      f"contains forbidden characters/patterns.")
                 return False
 
-            # Check if it should be in the playlists directory
             if os.path.dirname(full_save_path) != self.playlists_base_dir:
                  logger.warning(f"File saved outside default playlists dir: {full_save_path}")
                  reply = QMessageBox.question(self, "Confirm Save Location",
@@ -353,7 +360,6 @@ class PlaylistEditorWindow(QMainWindow):
                      return False
 
 
-            # Check for overwrite (QFileDialog non-native might not prompt)
             if os.path.exists(full_save_path):
                 logger.warning(f"File '{full_save_path}' already exists, prompting for overwrite.")
                 reply = QMessageBox.question(self, "Confirm Overwrite", f"'{filename}' exists. Overwrite?",
@@ -376,7 +382,6 @@ class PlaylistEditorWindow(QMainWindow):
         else:
             logger.info("Save As dialog cancelled or no filename entered.")
             return False
-        # --- END MODIFIED ---
 
     def prompt_save_changes(self):
         logger.debug("Prompting user to save unsaved changes.")
@@ -395,6 +400,14 @@ class PlaylistEditorWindow(QMainWindow):
 
     def closeEvent(self, event):
         logger.debug("PlaylistEditorWindow closeEvent triggered.")
+
+        if self.text_editor_window_instance and self.text_editor_window_instance.isVisible():
+             logger.debug("Attempting to close TextEditorWindow...")
+             if not self.text_editor_window_instance.close():
+                 logger.warning("TextEditorWindow close cancelled, aborting PlaylistEditor close.")
+                 event.ignore()
+                 return
+
         if self.isWindowModified():
             logger.info("Window has unsaved changes, prompting user before closing.")
             reply = self.prompt_save_changes()
