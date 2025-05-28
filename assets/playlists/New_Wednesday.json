@@ -25,7 +25,7 @@
             "layers": [
                 "Octo_Europa.jpg"
             ],
-            "loop_to_slide": 2,
+            "loop_to_slide": 0,
             "text_overlay": {
                 "end_sentence": "all",
                 "paragraph_name": "Hunting_of_the_Snark",
@@ -53,11 +53,11 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 0,
+            "duration": 3,
             "layers": [
                 "dolphin_in_space.jpg"
             ],
-            "loop_to_slide": 6
+            "loop_to_slide": 4
         },
         {
             "duration": 0,
@@ -75,7 +75,7 @@
             "loop_to_slide": 0,
             "text_overlay": {
                 "end_sentence": 1,
-                "paragraph_name": "new_one",
+                "paragraph_name": "humpty_dumpty",
                 "start_sentence": 1
             }
         },
@@ -84,7 +84,7 @@
             "layers": [
                 "dead_on_mars.jpg"
             ],
-            "loop_to_slide": 0
+            "loop_to_slide": 9
         },
         {
             "duration": 2,
@@ -117,7 +117,7 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 4,
+            "duration": 0,
             "layers": [
                 "istockphoto-1442179368-612x612.jpg"
             ],
