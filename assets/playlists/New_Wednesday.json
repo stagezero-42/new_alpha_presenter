@@ -21,15 +21,15 @@
             }
         },
         {
-            "duration": 2,
+            "duration": 3,
             "layers": [
                 "Octo_Europa.jpg"
             ],
             "loop_to_slide": 2,
             "text_overlay": {
-                "end_sentence": 5,
+                "end_sentence": "all",
                 "paragraph_name": "Hunting_of_the_Snark",
-                "start_sentence": 3
+                "start_sentence": 1
             }
         },
         {
@@ -53,11 +53,11 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 2,
+            "duration": 0,
             "layers": [
                 "dolphin_in_space.jpg"
             ],
-            "loop_to_slide": 0
+            "loop_to_slide": 6
         },
         {
             "duration": 0,
@@ -72,7 +72,12 @@
             "layers": [
                 "dolphin.jpg"
             ],
-            "loop_to_slide": 0
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "end_sentence": 1,
+                "paragraph_name": "new_one",
+                "start_sentence": 1
+            }
         },
         {
             "duration": 2,
@@ -112,7 +117,7 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 0,
+            "duration": 4,
             "layers": [
                 "istockphoto-1442179368-612x612.jpg"
             ],
