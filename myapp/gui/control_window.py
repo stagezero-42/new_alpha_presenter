@@ -19,7 +19,7 @@ from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
 from myapp import __version__
 from .thumbnail_generator import create_composite_thumbnail, get_thumbnail_size, get_list_widget_height
-from .slide_timer import SlideTimer  # This is for the overall slide or initial text delay
+from .slide_timer import SlideTimer
 from .widget_helpers import create_button
 from .playlist_validator import PlaylistValidator
 from .text_controller import TextController
@@ -54,13 +54,13 @@ class ControlWindow(QMainWindow):
         self.ui_updater = ControlWindowUIUpdater(self)
 
         self.current_index = -1
-        self.is_displaying = False  # True if images are shown
-        self._is_timer_for_initial_text_delay = False  # For the main SlideTimer
+        self.is_displaying = False
+        self._is_timer_for_initial_text_delay = False
 
         self.editor_window = None
         self.settings_window_instance = None
 
-        self.slide_timer = SlideTimer(self)  # For initial text delay OR slide duration
+        self.slide_timer = SlideTimer(self)
         self.slide_timer.timeout_action_required.connect(self.auto_advance_or_loop_slide)
 
         self.text_controller.finished_and_should_advance_slide.connect(self._handle_text_finished_advance)
@@ -189,7 +189,9 @@ class ControlWindow(QMainWindow):
         self.playlist_view.clear()
 
         for i, slide_data in enumerate(self.playlist.get_slides()):
-            text_overlay_info = slide_data.get("text_overlay")
+            # Robustly get text_overlay_info, ensuring it's a dict
+            text_overlay_info = slide_data.get("text_overlay") if isinstance(slide_data.get("text_overlay"),
+                                                                             dict) else {}
             has_text = bool(text_overlay_info and text_overlay_info.get("paragraph_name"))
 
             composite_icon = create_composite_thumbnail(
@@ -199,8 +201,6 @@ class ControlWindow(QMainWindow):
             tooltip_parts = [f"Slide {i + 1}"]
             duration = slide_data.get("duration", 0)
             loop_target = slide_data.get("loop_to_slide", 0)
-
-            text_settings = slide_data.get("text_overlay") or {}  # Ensure dict
 
             if has_text:
                 tooltip_parts.append(f"Initial Text Delay: {duration}s")
@@ -215,11 +215,11 @@ class ControlWindow(QMainWindow):
                 else:
                     tooltip_parts.append(f"Loop to Slide {loop_target} (inactive)")
 
-            if has_text:
-                tooltip_parts.append(f"Text: {text_settings.get('paragraph_name', 'N/A')}")
-                if text_settings.get("sentence_timing_enabled"):
+            if has_text:  # Use text_overlay_info which is now guaranteed to be a dict
+                tooltip_parts.append(f"Text: {text_overlay_info.get('paragraph_name', 'N/A')}")
+                if text_overlay_info.get("sentence_timing_enabled"):
                     tooltip_parts.append("Timed Sentences")
-                    if text_settings.get("auto_advance_slide"):
+                    if text_overlay_info.get("auto_advance_slide"):
                         tooltip_parts.append("Auto->Next Slide")
 
             item.setToolTip("\n".join(tooltip_parts))
@@ -263,14 +263,18 @@ class ControlWindow(QMainWindow):
             self.toggle_display_window_visibility()
 
         slide_data = self.playlist.get_slide(self.current_index)
-        if not slide_data: self.clear_display_screen(); return
+        if not slide_data:
+            logger.warning(f"Slide data is None for valid index {self.current_index}, clearing.")
+            self.clear_display_screen();
+            return
 
         self.is_displaying = True
         self.display_window.display_images(slide_data.get("layers", []))
 
-        # --- MODIFIED HERE ---
-        text_overlay_settings = slide_data.get("text_overlay") or {}  # Ensures it's a dict
-        # --- END MODIFIED ---
+        # --- More robust handling for text_overlay_settings ---
+        potential_text_overlay = slide_data.get("text_overlay")
+        text_overlay_settings = potential_text_overlay if isinstance(potential_text_overlay, dict) else {}
+        # --- End robust handling ---
 
         sentence_timing_enabled = text_overlay_settings.get("sentence_timing_enabled", False)
         auto_advance_slide_on_text_finish = text_overlay_settings.get("auto_advance_slide", False)

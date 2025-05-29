@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QHeaderView, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QTextCursor  # Added QTextCursor
+from PySide6.QtGui import QIcon, QTextCursor
 
 from ..text.paragraph_manager import ParagraphManager
 from ..utils.paths import get_icon_file_path
@@ -100,11 +100,16 @@ class TextEditorWindow(QMainWindow):
         sent_buttons_layout = QHBoxLayout()
         self.add_sent_button = create_button("Add", "add.png", "Add Sentence", self.add_sentence)
         self.del_sent_button = create_button("Remove", "remove.png", "Remove Selected Sentence", self.delete_sentence)
-        self.split_sent_button = create_button("Split", "split.png", "Split Sentence at Cursor", self.split_sentence)
         sent_buttons_layout.addWidget(self.add_sent_button)
         sent_buttons_layout.addWidget(self.del_sent_button)
         sent_buttons_layout.addStretch()
+        self.split_sent_button = create_button("Split", "split.png", "Split Sentence at Cursor", self.split_sentence)
+        # --- NEW JOIN BUTTON ---
+        self.join_sent_button = create_button("Join", "join.png", "Join Selected Sentence with Next",
+                                              self.join_sentence)
         sent_buttons_layout.addWidget(self.split_sent_button)
+        sent_buttons_layout.addWidget(self.join_sent_button)
+        # --- END NEW JOIN BUTTON ---
         group_layout.addLayout(sent_buttons_layout)
 
         group_layout.addWidget(QLabel("Edit Selected Sentence Text:"))
@@ -200,7 +205,7 @@ class TextEditorWindow(QMainWindow):
         if select_row != -1 and self.sent_table_widget.rowCount() > 0:
             actual_row = min(select_row, self.sent_table_widget.rowCount() - 1)
             self.sent_table_widget.selectRow(actual_row)
-        else:
+        else:  # Explicitly call selection changed to clear editor if no selection or table empty
             self.handle_sent_selection_changed()
 
     def handle_delay_changed(self, value):
@@ -208,7 +213,9 @@ class TextEditorWindow(QMainWindow):
         sender = self.sender()
         if sender:
             row = sender.property("row")
-            if row is not None and 0 <= row < len(self.paragraphs_cache[self.current_paragraph_name]["sentences"]):
+            # Ensure cache and row index are valid
+            if row is not None and self.current_paragraph_name in self.paragraphs_cache and \
+                    0 <= row < len(self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])):
                 self.paragraphs_cache[self.current_paragraph_name]["sentences"][row]["delay_seconds"] = value
                 self.mark_dirty()
 
@@ -216,69 +223,78 @@ class TextEditorWindow(QMainWindow):
         if self._block_signals: return
         self._block_signals = True
         selected_items = self.sent_table_widget.selectedItems()
-        if selected_items and self.current_paragraph_name:
+        if selected_items and self.current_paragraph_name and self.current_paragraph_name in self.paragraphs_cache:
             row = self.sent_table_widget.row(selected_items[0])
-            # Ensure row is valid for the cache, which might not be the case if table is empty
-            if 0 <= row < len(self.paragraphs_cache[self.current_paragraph_name]["sentences"]):
-                text = self.paragraphs_cache[self.current_paragraph_name]["sentences"][row]["text"]
+            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+            if 0 <= row < len(sentences):
+                text = sentences[row].get("text", "")
                 self.sent_edit_text.setText(text)
                 self.sent_edit_text.setEnabled(True)
-            else:  # Should not happen if populated correctly, but defensive
+            else:
                 self.sent_edit_text.clear()
                 self.sent_edit_text.setEnabled(False)
-
         else:
             self.sent_edit_text.clear()
             self.sent_edit_text.setEnabled(False)
         self._block_signals = False
         self.update_ui_state()
 
-    def handle_sent_text_changed(self, item):
+    def handle_sent_text_changed(self, item):  # From QTableWidget itemChanged
         if self._block_signals or not self.current_paragraph_name: return
         row = item.row()
         new_text = item.text()
-        # Ensure row is valid
-        if 0 <= row < len(self.paragraphs_cache[self.current_paragraph_name]["sentences"]):
-            self.paragraphs_cache[self.current_paragraph_name]["sentences"][row]["text"] = new_text
-            self._block_signals = True
-            if self.sent_table_widget.currentRow() == row:  # Only update editor if it's for the selected row
-                self.sent_edit_text.setText(new_text)
-            self._block_signals = False
-            self.mark_dirty()
+        if self.current_paragraph_name in self.paragraphs_cache:
+            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+            if 0 <= row < len(sentences):
+                sentences[row]["text"] = new_text
+                self._block_signals = True
+                if self.sent_table_widget.currentRow() == row:
+                    self.sent_edit_text.setText(new_text)
+                self._block_signals = False
+                self.mark_dirty()
 
-    def handle_sent_editor_changed(self):
+    def handle_sent_editor_changed(self):  # From QTextEdit textChanged
         if self._block_signals or not self.current_paragraph_name: return
-        selected_items = self.sent_table_widget.selectedItems()
-        if not selected_items: return
 
-        row = self.sent_table_widget.row(selected_items[0])
+        current_row = self.sent_table_widget.currentRow()
+        if current_row == -1: return  # No row selected in table
+
         new_text = self.sent_edit_text.toPlainText()
 
-        if 0 <= row < len(self.paragraphs_cache[self.current_paragraph_name]["sentences"]):
-            self.paragraphs_cache[self.current_paragraph_name]["sentences"][row]["text"] = new_text
-            self._block_signals = True
-            self.sent_table_widget.item(row, 0).setText(new_text)
-            self._block_signals = False
-            self.mark_dirty()
+        if self.current_paragraph_name in self.paragraphs_cache:
+            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+            if 0 <= current_row < len(sentences):
+                sentences[current_row]["text"] = new_text
+                self._block_signals = True
+                # Update table cell text without triggering itemChanged again
+                table_item = self.sent_table_widget.item(current_row, 0)
+                if table_item:
+                    table_item.setText(new_text)
+                else:  # Should not happen if table populated correctly
+                    self.sent_table_widget.setItem(current_row, 0, QTableWidgetItem(new_text))
+                self._block_signals = False
+                self.mark_dirty()
 
-    def handle_sentence_reorder(self, logical_index, old_visual_index, new_visual_index):
-        if not self.current_paragraph_name or self._block_signals: return  # Check block_signals
-        logger.debug(f"Row moved from {old_visual_index} to {new_visual_index} (logical: {logical_index})")
+    def handle_sentence_reorder(self, logical_index_moved_from, old_visual_index, new_visual_index):
+        # Note: For verticalHeader().sectionMoved, logical_index IS the old_visual_index before move
+        if not self.current_paragraph_name or self._block_signals or old_visual_index == new_visual_index: return
+        logger.debug(f"Row moved from visual index {old_visual_index} to {new_visual_index}")
 
-        self._block_signals = True  # Block during manipulation
-        moved_sentence = self.paragraphs_cache[self.current_paragraph_name]['sentences'].pop(old_visual_index)
-        self.paragraphs_cache[self.current_paragraph_name]['sentences'].insert(new_visual_index, moved_sentence)
+        self._block_signals = True
+        sentences_list = self.paragraphs_cache[self.current_paragraph_name]['sentences']
+        moved_sentence = sentences_list.pop(old_visual_index)
+        sentences_list.insert(new_visual_index, moved_sentence)
         self._block_signals = False
 
         self.mark_dirty()
         self.populate_sentence_table(select_row=new_visual_index)
 
     def add_sentence(self):
-        if not self.current_paragraph_name: return
+        if not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
         new_sentence = {"text": "New sentence.", "delay_seconds": 2.0}
 
         current_row = self.sent_table_widget.currentRow()
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name]["sentences"]
+        sentences_list = self.paragraphs_cache[self.current_paragraph_name].setdefault("sentences", [])
         insert_index = current_row + 1 if current_row != -1 else len(sentences_list)
 
         sentences_list.insert(insert_index, new_sentence)
@@ -287,9 +303,11 @@ class TextEditorWindow(QMainWindow):
 
     def delete_sentence(self):
         current_row = self.sent_table_widget.currentRow()
-        if current_row == -1 or not self.current_paragraph_name: return
+        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
 
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name]["sentences"]
+        sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+        if not (0 <= current_row < len(sentences_list)): return  # Defensive
+
         del sentences_list[current_row]
 
         new_row_count = len(sentences_list)
@@ -302,7 +320,7 @@ class TextEditorWindow(QMainWindow):
 
     def split_sentence(self):
         current_row = self.sent_table_widget.currentRow()
-        if current_row == -1 or not self.current_paragraph_name: return
+        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
 
         cursor = self.sent_edit_text.textCursor()
         pos = cursor.position()
@@ -317,22 +335,61 @@ class TextEditorWindow(QMainWindow):
                                     "Cannot split into an empty sentence. Ensure cursor is not next to spaces that result in an empty part.")
                 return
 
-            # --- MODIFIED: Safe get for delay_seconds ---
-            current_sentence_obj = self.paragraphs_cache[self.current_paragraph_name]["sentences"][current_row]
+            sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+            if not (0 <= current_row < len(sentences_list)): return
+
+            current_sentence_obj = sentences_list[current_row]
             current_delay = current_sentence_obj.get("delay_seconds", 2.0)
-            # --- END MODIFIED ---
 
             current_sentence_obj["text"] = text1
 
             new_sentence_data = {"text": text2, "delay_seconds": current_delay}
             insert_index = current_row + 1
-            self.paragraphs_cache[self.current_paragraph_name]["sentences"].insert(insert_index, new_sentence_data)
+            sentences_list.insert(insert_index, new_sentence_data)
 
             self.populate_sentence_table(select_row=insert_index)
             self.mark_dirty()
         else:
             QMessageBox.information(self, "Split Info",
                                     "Place cursor within the text (not at the very start or end) to split.")
+
+    # --- NEW JOIN SENTENCE METHOD ---
+    def join_sentence(self):
+        current_row = self.sent_table_widget.currentRow()
+        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache:
+            logger.debug("Join sentence: No row selected or no paragraph.")
+            return
+
+        sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+        if not (0 <= current_row < len(sentences_list) - 1):  # Must not be the last sentence
+            logger.debug("Join sentence: Selected sentence is the last one or invalid.")
+            QMessageBox.information(self, "Join Info",
+                                    "Select a sentence that is not the last one to join it with the next.")
+            return
+
+        sentence1_obj = sentences_list[current_row]
+        sentence2_obj = sentences_list[current_row + 1]
+
+        text1 = sentence1_obj.get("text", "").strip()
+        text2 = sentence2_obj.get("text", "").strip()
+
+        joined_text = text1
+        if text1 and text2:
+            joined_text += " " + text2
+        elif text2:
+            joined_text = text2
+        # If text2 is empty, joined_text remains text1
+
+        sentence1_obj["text"] = joined_text.strip()
+        # Keep delay of the first sentence (sentence1_obj["delay_seconds"] is preserved)
+
+        del sentences_list[current_row + 1]  # Remove the second sentence
+
+        logger.info(f"Joined sentence at row {current_row} with row {current_row + 1}.")
+        self.populate_sentence_table(select_row=current_row)
+        self.mark_dirty()
+
+    # --- END NEW JOIN SENTENCE METHOD ---
 
     def add_paragraph(self):
         para_name, ok = QInputDialog.getText(self, "New Paragraph", "Enter name:")
@@ -408,7 +465,7 @@ class TextEditorWindow(QMainWindow):
             QMessageBox.information(self, "No Changes", "No changes to save.");
             return
 
-        self.update_cache_from_table()  # Ensure cache is up-to-date with table edits
+        self.update_cache_from_table()
 
         for name, data in self.paragraphs_cache.items():
             try:
@@ -425,15 +482,13 @@ class TextEditorWindow(QMainWindow):
         elif saved_count > 0:
             QMessageBox.information(self, "Save Complete", f"Saved {saved_count} file(s)."); self.mark_dirty(False)
         else:
-            QMessageBox.information(self, "Save", "No files with changes to save."); self.mark_dirty(
-                False)  # Changed message
+            QMessageBox.information(self, "Save", "No files with changes to save."); self.mark_dirty(False)
 
     def update_cache_from_table(self):
         if not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
 
-        # Only update if the paragraph data is actually loaded
-        if not self.paragraphs_cache.get(self.current_paragraph_name):
-            return
+        paragraph_entry = self.paragraphs_cache.get(self.current_paragraph_name)
+        if not paragraph_entry: return  # Ensure the paragraph exists in cache
 
         new_sentences = []
         for row in range(self.sent_table_widget.rowCount()):
@@ -444,20 +499,36 @@ class TextEditorWindow(QMainWindow):
             delay = spin_box_widget.value() if isinstance(spin_box_widget, QDoubleSpinBox) else 2.0
             new_sentences.append({"text": text, "delay_seconds": delay})
 
-        self.paragraphs_cache[self.current_paragraph_name]['sentences'] = new_sentences
+        paragraph_entry['sentences'] = new_sentences  # Update the cached entry
         logger.debug(f"Cache updated from table for '{self.current_paragraph_name}'.")
 
     def update_ui_state(self):
         para_selected = self.current_paragraph_name is not None
-        sent_selected = self.sent_table_widget.currentRow() != -1
+        current_row = self.sent_table_widget.currentRow()
+        sent_selected = current_row != -1
+
+        is_last_sentence = False
+        num_sentences = 0
+        if para_selected and sent_selected and self.current_paragraph_name in self.paragraphs_cache:
+            sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
+            num_sentences = len(sentences_list)
+            if num_sentences > 0 and current_row == num_sentences - 1:
+                is_last_sentence = True
 
         self.rename_para_button.setEnabled(para_selected)
         self.del_para_button.setEnabled(para_selected)
         self.para_group_box.setEnabled(para_selected)
         self.add_sent_button.setEnabled(para_selected)
         self.del_sent_button.setEnabled(para_selected and sent_selected)
-        self.split_sent_button.setEnabled(para_selected and sent_selected and self.sent_edit_text.isEnabled() and len(
-            self.sent_edit_text.toPlainText()) > 0)  # Ensure text editor has content
+
+        can_split = para_selected and sent_selected and self.sent_edit_text.isEnabled() and len(
+            self.sent_edit_text.toPlainText()) > 0
+        self.split_sent_button.setEnabled(can_split)
+
+        # Join button enabled if a sentence is selected and it's not the last one.
+        can_join = para_selected and sent_selected and (num_sentences > 1 and not is_last_sentence)
+        self.join_sent_button.setEnabled(can_join)
+
         self.sent_edit_text.setEnabled(para_selected and sent_selected)
         self.save_button.setEnabled(self.isWindowModified())
 
