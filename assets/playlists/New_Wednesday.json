@@ -87,7 +87,7 @@
             "loop_to_slide": 9
         },
         {
-            "duration": 2,
+            "duration": 5,
             "layers": [
                 "dummy_static.gif",
                 "dummy_vector.svg"

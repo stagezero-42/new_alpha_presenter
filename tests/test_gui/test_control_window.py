@@ -12,8 +12,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 from myapp.gui.control_window import ControlWindow
 from myapp.media.media_renderer import MediaRenderer # Keep for spec
 from myapp.playlist.playlist import Playlist
-# SettingsManager is mocked, so direct import isn't strictly needed here for tests
-# from myapp.settings.settings_manager import SettingsManager
 
 @pytest.fixture(scope="session")
 def qapp():
@@ -27,24 +25,23 @@ def qapp():
 def mock_media_renderer():
     """Creates a MagicMock for the MediaRenderer."""
     renderer_mock = MagicMock(spec=MediaRenderer)
-    # --- ADDED: Ensure text_item attribute exists on the mock ---
-    renderer_mock.text_item = None # Mimic the initial state in MediaRenderer
-    # --- END ADDED ---
+    renderer_mock.text_item = None
     return renderer_mock
 
 @pytest.fixture
-def control_window(qapp, mock_media_renderer): # qapp ensures QApplication is initialized
+def control_window(qapp, mock_media_renderer):
     """Creates a ControlWindow instance with mocked dependencies."""
     with patch('myapp.gui.control_window.SettingsManager') as MockSM:
         MockSM.return_value.get_current_playlist.return_value = None
-        MockSM.return_value.get_setting.return_value = {} # Default for settings
-        with patch('myapp.gui.control_window.os.path.exists', return_value=True): # For icon loading
+        MockSM.return_value.get_setting.return_value = {}
+        with patch('myapp.gui.control_window.os.path.exists', return_value=True):
             with patch('myapp.gui.control_window.get_icon_file_path', return_value="dummy.png"):
                 with patch('myapp.gui.control_window.setup_keybindings') as mock_setup_keys:
                      window = ControlWindow(mock_media_renderer)
                      mock_setup_keys.assert_called_once_with(window, window.settings_manager)
-    # Patch the playlist after ControlWindow initialization if methods are called directly
     window.playlist = MagicMock(spec=Playlist)
+    # Ensure PlaylistIOHandler uses a mock settings manager too if needed,
+    # but here we mock its outputs directly in the test.
     return window
 
 @pytest.fixture
@@ -58,18 +55,26 @@ def valid_playlist_path(tmp_path):
         json.dump(playlist_content, f)
     return str(playlist_path)
 
-@patch('myapp.gui.control_window.get_themed_open_filename')
+# --- MODIFIED TEST ---
+@patch('myapp.gui.playlist_io_handler.get_themed_open_filename')
 def test_load_playlist_dialog_opens_and_loads(mock_get_themed_open_filename, control_window, valid_playlist_path):
     mock_get_themed_open_filename.return_value = valid_playlist_path
     playlists_dir = os.path.dirname(valid_playlist_path)
 
-    with patch('myapp.gui.control_window.get_playlists_path', return_value=playlists_dir):
-         with patch.object(control_window, 'load_playlist') as mock_load:
-              control_window.load_playlist_dialog()
-              mock_get_themed_open_filename.assert_called_once_with(
-                  control_window, "Open Playlist", playlists_dir, "JSON Files (*.json)"
-              )
-              mock_load.assert_called_once_with(valid_playlist_path)
+    # Patch get_playlists_path where it's called (in playlist_io_handler)
+    with patch('myapp.gui.playlist_io_handler.get_playlists_path', return_value=playlists_dir):
+         # Patch the new method _load_and_update_playlist in ControlWindow
+         with patch.object(control_window, '_load_and_update_playlist') as mock_load_update:
+              # Patch Playlist in playlist_io_handler to avoid actual loading/validation
+              # during the prompt_load_playlist call within the test.
+              with patch('myapp.gui.playlist_io_handler.Playlist', return_value=MagicMock()):
+                control_window.load_playlist_dialog()
+                mock_get_themed_open_filename.assert_called_once_with(
+                    control_window, "Open Playlist", playlists_dir, "JSON Files (*.json)"
+                )
+                # Check that our internal method _load_and_update_playlist was called
+                mock_load_update.assert_called_once_with(valid_playlist_path)
+# --- END MODIFIED TEST ---
 
 def test_next_slide_updates_state_and_attempts_display(control_window):
     # Configure the mock playlist on the control_window instance

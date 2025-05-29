@@ -10,23 +10,21 @@ from PySide6.QtCore import QCoreApplication, QSize, Qt
 from PySide6.QtGui import QIcon, QPixmap
 
 # Local Imports
-from .file_dialog_helpers import get_themed_open_filename
 from .playlist_editor import PlaylistEditorWindow
 from .settings_window import SettingsWindow
 from ..playlist.playlist import Playlist
 from ..text.paragraph_manager import ParagraphManager
-from ..utils.paths import get_icon_file_path, get_playlists_path
+from ..utils.paths import get_icon_file_path
 from ..settings.settings_manager import SettingsManager
 from myapp.settings.key_bindings import setup_keybindings
 from myapp import __version__
-from .thumbnail_generator import (
-    create_composite_thumbnail,
-    get_thumbnail_size,
-    get_list_widget_height
-)
+from .thumbnail_generator import create_composite_thumbnail, get_thumbnail_size, get_list_widget_height
 from .slide_timer import SlideTimer
 from .widget_helpers import create_button
-from .playlist_validator import PlaylistValidator  # <-- NEW IMPORT
+from .playlist_validator import PlaylistValidator
+from .text_controller import TextController
+from .playlist_io_handler import PlaylistIOHandler
+from .ui_updater import ControlWindowUIUpdater # <-- NEW IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -42,43 +40,37 @@ class ControlWindow(QMainWindow):
             icon_path = get_icon_file_path(icon_name)
             if icon_path and os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
-            else:
-                logger.warning(f"Window icon '{icon_name}' not found.")
         except Exception as e:
             logger.error(f"Failed to set window icon: {e}", exc_info=True)
 
         self.display_window = display_window
-        if not display_window:
-            logger.critical("DisplayWindow instance must be provided.")
-            raise ValueError("DisplayWindow instance must be provided.")
+        if not display_window: raise ValueError("DisplayWindow instance must be provided.")
 
         self.settings_manager = SettingsManager()
         self.playlist = Playlist()
         self.paragraph_manager = ParagraphManager()
-        self.playlist_validator = PlaylistValidator(self.paragraph_manager)  # <-- NEW
+        self.playlist_validator = PlaylistValidator(self.paragraph_manager)
+        self.text_controller = TextController(self.paragraph_manager, self.display_window)
+        self.playlist_io = PlaylistIOHandler(self, self.settings_manager)
+        self.ui_updater = ControlWindowUIUpdater(self) # <-- NEW
+
         self.current_index = -1
         self.is_displaying = False
-
-        self.current_paragraph_data = None
-        self.current_sentence_index = -1
-        self.text_start_index = -1
-        self.text_end_index = -1
         self._is_timer_for_initial_text_delay = False
-
         self.editor_window = None
         self.settings_window_instance = None
-
         self.slide_timer = SlideTimer(self)
         self.slide_timer.timeout_action_required.connect(self.auto_advance_or_loop_slide)
         self.indicator_icons = self._load_indicator_icons()
 
         self.setup_ui()
         setup_keybindings(self, self.settings_manager)
-        self.update_ui_state()
+        self.ui_updater.update_all() # <-- Use UI Updater
         self.load_last_playlist()
         logger.debug("ControlWindow initialization complete.")
 
     def _load_indicator_icons(self):
+        # ... (This method remains the same) ...
         logger.debug("Loading indicator icons...")
         icons = {}
         icon_files = {
@@ -108,6 +100,8 @@ class ControlWindow(QMainWindow):
         return icons
 
     def setup_ui(self):
+        # ... (This method remains the same, though it sets up the widgets
+        #      that the UIUpdater will now control) ...
         logger.debug("Setting up ControlWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -175,48 +169,13 @@ class ControlWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.resize(700, 350)
         logger.debug("ControlWindow UI setup complete.")
-        self._update_issue_display([])
+        self.ui_updater.update_issue_display([]) # <-- Use UI Updater
 
-    # <-- REMOVED _update_playlist_issues -->
 
-    def _update_issue_display(self, issues_found):
-        """Updates the UI elements to show detected playlist issues."""
-        # Clear previous icons
-        while self.issue_icon_layout.count():
-            item = self.issue_icon_layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-
-        if issues_found:
-            self.issue_label.setText(f"ISSUES: {len(issues_found)}")
-
-            first_issue_slide_index = issues_found[0]["index"]
-            first_issue_icons = sorted(list(issues_found[0]["icons"]))
-            first_issue_descriptions = issues_found[0]["descriptions"]
-
-            for icon_name in first_issue_icons:
-                pixmap = self.indicator_icons.get(icon_name)
-                if pixmap and not pixmap.isNull():
-                    icon_label = QLabel()
-                    icon_label.setPixmap(pixmap)
-                    self.issue_icon_layout.addWidget(icon_label)
-
-            tooltip_text = f"Slide {first_issue_slide_index + 1} Issues:\n- " + "\n- ".join(first_issue_descriptions)
-            if len(issues_found) > 1:
-                tooltip_text += f"\n\n({len(issues_found) - 1} other slide(s) also have issues.)"
-
-            self.issue_label.setToolTip(tooltip_text)
-            self.issue_icon_widget.setToolTip(tooltip_text)
-
-            self.issue_label.show()
-            self.issue_icon_widget.show()
-        else:
-            self.issue_label.setText("")
-            self.issue_label.setToolTip("")
-            self.issue_icon_widget.setToolTip("")
-            self.issue_label.hide()
-            self.issue_icon_widget.hide()
+    # <-- REMOVED _update_issue_display -->
+    # <-- REMOVED update_list_selection -->
+    # <-- REMOVED update_show_clear_button_state -->
+    # <-- REMOVED update_ui_state (in favour of individual calls or update_all) -->
 
     def populate_playlist_view(self):
         logger.debug("Populating playlist view...")
@@ -227,11 +186,10 @@ class ControlWindow(QMainWindow):
             has_text = bool(text_overlay_info and text_overlay_info.get("paragraph_name"))
 
             composite_icon = create_composite_thumbnail(
-                slide_data, i, self.indicator_icons,
-                has_text_overlay=has_text
+                slide_data, i, self.indicator_icons, has_text_overlay=has_text
             )
             item = QListWidgetItem(composite_icon, "")
-
+            # ... (Tooltip logic remains) ...
             tooltip_parts = [f"Slide {i + 1}"]
             duration = slide_data.get("duration", 0)
             loop_target = slide_data.get("loop_to_slide", 0)
@@ -255,11 +213,10 @@ class ControlWindow(QMainWindow):
             item.setToolTip("\n".join(tooltip_parts))
             item.setData(Qt.ItemDataRole.UserRole, i)
             self.playlist_view.addItem(item)
-        logger.info(f"Playlist view populated with {self.playlist_view.count()} items.")
 
-        # <-- MODIFIED: Call validator and update display -->
+        logger.info(f"Playlist view populated with {self.playlist_view.count()} items.")
         issues = self.playlist_validator.validate(self.playlist)
-        self._update_issue_display(issues)
+        self.ui_updater.update_issue_display(issues) # <-- Use UI Updater
 
     def _set_slide_index(self, new_index):
         slides = self.playlist.get_slides()
@@ -268,213 +225,88 @@ class ControlWindow(QMainWindow):
         changed = False
 
         if not slides:
-            if self.current_index != -1:
-                self.current_index = -1
-                changed = True
+            if self.current_index != -1: self.current_index = -1; changed = True
         elif 0 <= new_index < num_slides:
-            if self.current_index != new_index:
-                self.current_index = new_index
-                changed = True
-        else:
-            if not (0 <= self.current_index < num_slides):
-                self.current_index = -1
-                changed = (old_index != self.current_index)
+            if self.current_index != new_index: self.current_index = new_index; changed = True
+        elif not (0 <= self.current_index < num_slides):
+            self.current_index = -1; changed = (old_index != self.current_index)
 
         if changed:
-            self.update_ui_state()
+            self.ui_updater.update_all() # <-- Use UI Updater
         return changed
-
-    def _reset_text_state(self):
-        self.current_paragraph_data = None
-        self.current_sentence_index = -1
-        self.text_start_index = -1
-        self.text_end_index = -1
-        self._is_timer_for_initial_text_delay = False
-        if self.display_window:
-            self.display_window.clearText()
-
-    def _display_current_sentence(self):
-        if not self.current_paragraph_data or self.current_sentence_index < 0:
-            if self.display_window: self.display_window.clearText()
-            return
-
-        sentences = self.current_paragraph_data.get("sentences", [])
-        if self.text_start_index <= self.current_sentence_index <= self.text_end_index:
-            if 0 <= self.current_sentence_index < len(sentences):
-                sentence_data = sentences[self.current_sentence_index]
-                text = sentence_data.get("text", "")
-                if self.display_window: self.display_window.displayText(text)
-            else:
-                self._reset_text_state()
-        else:
-            self._reset_text_state()
 
     def _display_current_slide(self):
         self.slide_timer.stop()
-        self._reset_text_state()
+        self.text_controller.reset()
+        self._is_timer_for_initial_text_delay = False
 
         slides = self.playlist.get_slides()
         if not (0 <= self.current_index < len(slides)):
-            self.clear_display_screen()
-            return
+            self.clear_display_screen(); return
 
+        logger.info(f"Displaying slide {self.current_index + 1}.")
         if self.display_window and not self.display_window.isVisible():
             self.toggle_display_window_visibility()
 
         slide_data = self.playlist.get_slide(self.current_index)
-        if not slide_data:
-            self.clear_display_screen()
-            return
+        if not slide_data: self.clear_display_screen(); return
 
         self.is_displaying = True
         self.display_window.display_images(slide_data.get("layers", []))
 
-        text_overlay_info = slide_data.get("text_overlay")
-        if text_overlay_info:
-            para_name = text_overlay_info.get("paragraph_name")
-            start_sent_1based = text_overlay_info.get("start_sentence")
-            end_sent = text_overlay_info.get("end_sentence")
+        can_show_text, initial_delay = self.text_controller.load_slide_text(slide_data)
 
-            if para_name and start_sent_1based is not None and end_sent is not None:
-                try:
-                    self.current_paragraph_data = self.paragraph_manager.load_paragraph(para_name)
-                    if self.current_paragraph_data:
-                        num_para_sentences = len(self.current_paragraph_data.get("sentences", []))
-                        self.text_start_index = start_sent_1based - 1
-
-                        if isinstance(end_sent, str) and end_sent.lower() == "all":
-                            self.text_end_index = num_para_sentences - 1
-                        elif isinstance(end_sent, int):
-                            self.text_end_index = end_sent - 1
-                        else:
-                            self._reset_text_state();
-                            self.update_ui_state();
-                            return
-
-                        if 0 <= self.text_start_index < num_para_sentences and \
-                                self.text_start_index <= self.text_end_index < num_para_sentences:
-                            self.current_sentence_index = self.text_start_index
-                            initial_text_delay = slide_data.get("duration", 0)
-                            if initial_text_delay > 0:
-                                self._is_timer_for_initial_text_delay = True
-                                self.slide_timer.start(initial_text_delay)
-                            else:
-                                self._display_current_sentence()
-                        else:
-                            self._reset_text_state()
-                    else:
-                        self._reset_text_state()
-                except (FileNotFoundError, ValueError) as e:
-                    QMessageBox.warning(self, "Text Error", f"Could not load paragraph '{para_name}':\n{e}")
-                    self._reset_text_state()
+        if can_show_text:
+            if initial_delay > 0:
+                self._is_timer_for_initial_text_delay = True
+                self.slide_timer.start(initial_delay)
             else:
-                self._reset_text_state()
+                self.text_controller.show_first_sentence()
         else:
             slide_duration = slide_data.get("duration", 0)
-            if slide_duration > 0:
-                self._is_timer_for_initial_text_delay = False
-                self.slide_timer.start(slide_duration)
+            if slide_duration > 0: self.slide_timer.start(slide_duration)
 
-        self.update_ui_state()
+        self.ui_updater.update_all() # <-- Use UI Updater
 
     def clear_display_screen(self):
-        self._reset_text_state()
         self.slide_timer.stop()
-        if self.display_window:
-            self.display_window.clear_display()
+        self.text_controller.reset()
+        self._is_timer_for_initial_text_delay = False
+        if self.display_window: self.display_window.clear_display()
         self.is_displaying = False
-        self.update_ui_state()
-
-    def update_ui_state(self):
-        self.update_list_selection()
-        self.update_show_clear_button_state()
-        slides = self.playlist.get_slides()
-        has_slides = bool(slides)
-        num_slides = len(slides)
-
-        can_go_prev = False
-        if has_slides:
-            if self.current_sentence_index != -1 and self.current_paragraph_data and \
-                    self.current_sentence_index > self.text_start_index:
-                can_go_prev = True
-            elif self.current_index > 0:
-                can_go_prev = True
-
-        can_go_next = False
-        if has_slides:
-            if self.current_sentence_index != -1 and self.current_paragraph_data and \
-                    self.current_sentence_index < self.text_end_index:
-                can_go_next = True
-            elif self.current_index < num_slides - 1:
-                can_go_next = True
-
-        self.prev_button.setEnabled(can_go_prev)
-        self.next_button.setEnabled(can_go_next)
-        self.show_clear_button.setEnabled(has_slides)
-
-    def update_list_selection(self):
-        item_to_select = None
-        if self.playlist_view.count() > 0:
-            for i in range(self.playlist_view.count()):
-                item = self.playlist_view.item(i)
-                if item and item.data(Qt.ItemDataRole.UserRole) == self.current_index:
-                    item_to_select = item;
-                    break
-        try:
-            self.playlist_view.currentItemChanged.disconnect(self.handle_list_selection)
-        except (TypeError, RuntimeError):
-            pass
-        self.playlist_view.setCurrentItem(item_to_select)
-        if item_to_select:
-            self.playlist_view.scrollToItem(item_to_select, QAbstractItemView.ScrollHint.PositionAtCenter)
-        self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
-
-    def update_show_clear_button_state(self):
-        if self.is_displaying or (
-                self.display_window and self.display_window.text_item and self.display_window.text_item.isVisible()):
-            self.show_clear_button.setText(" Clear")
-            self.show_clear_button.setIcon(QIcon(get_icon_file_path("clear.png")))
-            self.show_clear_button.setToolTip("Clear the display (Space or Esc)")
-        else:
-            self.show_clear_button.setText(" Show")
-            self.show_clear_button.setIcon(QIcon(get_icon_file_path("play.png")))
-            self.show_clear_button.setToolTip("Show the selected slide (Space)")
+        self.ui_updater.update_all() # <-- Use UI Updater
 
     def handle_show_clear_click(self):
-        if self.is_displaying or (self.display_window and self.display_window.text_item):
+        if self.is_displaying or self.text_controller.is_active():
             self.clear_display_screen()
         else:
             slides = self.playlist.get_slides()
-            if not slides: QMessageBox.information(self, "No Playlist", "Load a playlist to show a slide."); return
+            if not slides: QMessageBox.information(self, "No Playlist", "Load a playlist..."); return
             if not (0 <= self.current_index < len(slides)): self._set_slide_index(0)
             self._display_current_slide()
 
     def next_slide(self):
-        if self.current_sentence_index != -1 and self.current_paragraph_data:
-            if self.current_sentence_index < self.text_end_index:
-                self.current_sentence_index += 1
-                self._display_current_sentence()
-                self.update_ui_state();
-                return
-            else:
-                self._reset_text_state()
+        if self.text_controller.is_active():
+            if self.text_controller.show_next_sentence():
+                self.ui_updater.update_all(); return
+            else: self.text_controller.reset()
 
         slides = self.playlist.get_slides()
-        if not slides or not (self.current_index < len(slides) - 1): self.update_ui_state(); return
+        if not slides or not (self.current_index < len(slides) - 1):
+            self.ui_updater.update_all(); return
+
         self._set_slide_index(self.current_index + 1)
         self._display_current_slide()
 
     def prev_slide(self):
-        if self.current_sentence_index != -1 and self.current_paragraph_data:
-            if self.current_sentence_index > self.text_start_index:
-                self.current_sentence_index -= 1
-                self._display_current_sentence()
-                self.update_ui_state();
-                return
-            else:
-                self._reset_text_state()
+        if self.text_controller.is_active():
+            if self.text_controller.show_prev_sentence():
+                self.ui_updater.update_all(); return
+            else: self.text_controller.reset()
 
-        if not self.playlist.get_slides() or self.current_index <= 0: self.update_ui_state(); return
+        if not self.playlist.get_slides() or self.current_index <= 0:
+            self.ui_updater.update_all(); return
+
         self._set_slide_index(self.current_index - 1)
         self._display_current_slide()
 
@@ -489,20 +321,18 @@ class ControlWindow(QMainWindow):
         if current_item:
             self._set_slide_index(current_item.data(Qt.ItemDataRole.UserRole))
         else:
-            self._set_slide_index(-1);
-            self.clear_display_screen()
+            self._set_slide_index(-1); self.clear_display_screen()
 
     def auto_advance_or_loop_slide(self):
         if self._is_timer_for_initial_text_delay:
             self._is_timer_for_initial_text_delay = False
-            if self.current_paragraph_data and self.current_sentence_index != -1:
-                self._display_current_sentence()
+            if self.text_controller.is_active(): self.text_controller.show_first_sentence()
             return
 
-        if not self.is_displaying: self.slide_timer.stop(); return
+        if not self.is_displaying or self.text_controller.is_active(): return
+
         slide_data = self.playlist.get_slide(self.current_index)
         if not slide_data: self.clear_display_screen(); return
-        if self.current_sentence_index != -1: self.slide_timer.stop(); return
 
         num_slides = len(self.playlist.get_slides())
         loop_target_1_based = slide_data.get("loop_to_slide", 0)
@@ -511,17 +341,13 @@ class ControlWindow(QMainWindow):
             loop_target_0_based = loop_target_1_based - 1
             if 0 <= loop_target_0_based < num_slides:
                 self._set_slide_index(loop_target_0_based)
-                self._display_current_slide();
-                return
+                self._display_current_slide(); return
 
-        if self.current_index < num_slides - 1:
-            self.next_slide()
-        else:
-            self.clear_display_screen()
+        if self.current_index < num_slides - 1: self.next_slide()
+        else: self.clear_display_screen()
 
-    def load_playlist(self, file_path):
-        self.slide_timer.stop()
-        self._reset_text_state()
+    def _load_and_update_playlist(self, file_path: str):
+        self.clear_display_screen()
         try:
             self.playlist.load(file_path)
             self.settings_manager.set_current_playlist(file_path)
@@ -530,39 +356,34 @@ class ControlWindow(QMainWindow):
             self.playlist = Playlist()
             self.settings_manager.set_current_playlist(None)
 
-        self.clear_display_screen()
-        self.populate_playlist_view()  # This now updates issues
+        self.populate_playlist_view()
         self._set_slide_index(0 if self.playlist.get_slides() else -1)
-        self.update_ui_state()
+        self.ui_updater.update_all() # <-- Use UI Updater
 
     def load_playlist_dialog(self):
-        fileName = get_themed_open_filename(self, "Open Playlist", get_playlists_path(), "JSON Files (*.json)")
-        if fileName: self.load_playlist(fileName)
+        file_path = self.playlist_io.prompt_load_playlist()
+        if file_path: self._load_and_update_playlist(file_path)
 
     def load_last_playlist(self):
-        last_playlist = self.settings_manager.get_current_playlist()
-        if last_playlist:
-            self.load_playlist(last_playlist)
-        else:
-            self.populate_playlist_view(); self.clear_display_screen(); self.update_ui_state()
+        file_path = self.playlist_io.get_last_playlist_path()
+        if file_path: self._load_and_update_playlist(file_path)
+        else: self.populate_playlist_view(); self.clear_display_screen(); self.ui_updater.update_all()
 
     def open_playlist_editor(self):
         if self.editor_window is None or not self.editor_window.isVisible():
             self.editor_window = PlaylistEditorWindow(self.display_window, self.playlist, self)
             self.editor_window.playlist_saved_signal.connect(self.handle_playlist_saved_by_editor)
             self.editor_window.show()
-        else:
-            self.editor_window.activateWindow(); self.editor_window.raise_()
+        else: self.editor_window.activateWindow(); self.editor_window.raise_()
 
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
-        self.load_playlist(saved_playlist_path)
+        self._load_and_update_playlist(saved_playlist_path)
 
     def open_settings_window(self):
         if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
             self.settings_window_instance = SettingsWindow(self)
             self.settings_window_instance.show()
-        else:
-            self.settings_window_instance.activateWindow(); self.settings_window_instance.raise_()
+        else: self.settings_window_instance.activateWindow(); self.settings_window_instance.raise_()
 
     def toggle_display_window_visibility(self):
         if self.display_window:
@@ -573,8 +394,8 @@ class ControlWindow(QMainWindow):
             else:
                 screens = QApplication.instance().screens()
                 if screens:
-                    display_target_screen = screens[1] if len(screens) > 1 else screens[0]
-                    self.display_window.setGeometry(display_target_screen.geometry())
+                    target = screens[1] if len(screens) > 1 else screens[0]
+                    self.display_window.setGeometry(target.geometry())
                 self.display_window.showFullScreen()
                 self.toggle_display_button.setText("Hide Display")
                 self.toggle_display_button.setIcon(QIcon(get_icon_file_path("hide_display.png")))
