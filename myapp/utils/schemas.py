@@ -4,7 +4,6 @@
 Defines the JSON schemas used for validation in the application.
 """
 
-# --- NEW SCHEMA ---
 # Schema for individual paragraph files (e.g., my_paragraph.json)
 PARAGRAPH_SCHEMA = {
     "type": "object",
@@ -19,19 +18,18 @@ PARAGRAPH_SCHEMA = {
                     "delay_seconds": {
                         "type": "number",
                         "minimum": 0,
-                        "default": 0.0
+                        "default": 2.0 # Changed default to 2.0s
                     }
                 },
-                "required": ["text", "delay_seconds"],
-                "additionalProperties": False # Keep sentences strict
+                "required": ["text"], # Make delay_seconds optional (will use default)
+                "additionalProperties": False
             },
             "default": []
         }
     },
     "required": ["name", "sentences"],
-    "additionalProperties": False # Keep paragraphs strict
+    "additionalProperties": False
 }
-# --- END NEW SCHEMA ---
 
 # Schema for playlist files (playlist.json)
 PLAYLIST_SCHEMA = {
@@ -57,9 +55,8 @@ PLAYLIST_SCHEMA = {
                         "minimum": 0,
                         "default": 0
                     },
-                    # --- NEW TEXT_OVERLAY FIELD ---
                     "text_overlay": {
-                        "type": ["object", "null"], # Can be an object or null
+                        "type": ["object", "null"],
                         "properties": {
                             "paragraph_name": {"type": "string"},
                             "start_sentence": {"type": "integer", "minimum": 1},
@@ -68,21 +65,30 @@ PLAYLIST_SCHEMA = {
                                     {"type": "integer", "minimum": 1},
                                     {"type": "string", "pattern": "^all$"}
                                 ]
+                            },
+                            # --- NEW TIMING FLAGS ---
+                            "sentence_timing_enabled": {
+                                "type": "boolean",
+                                "default": False # Default to manual (space bar)
+                            },
+                            "auto_advance_slide": {
+                                "type": "boolean",
+                                "default": False # Default to stopping at last sentence
                             }
+                            # --- END NEW TIMING FLAGS ---
                         },
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
-                        "additionalProperties": False
+                        "additionalProperties": False # Keep text_overlay strict
                     }
-                    # --- END NEW TEXT_OVERLAY FIELD ---
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True # Allow for future additions like text_overlay
+                "additionalProperties": True
             },
             "default": []
         }
     },
     "required": ["slides"],
-    "additionalProperties": True # Allow for future top-level additions
+    "additionalProperties": True
 }
 
 # Schema for settings file (settings.json)

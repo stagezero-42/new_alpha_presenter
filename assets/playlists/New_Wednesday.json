@@ -9,14 +9,16 @@
             "loop_to_slide": 0
         },
         {
-            "duration": 10,
+            "duration": 4,
             "layers": [
                 "Venus_Orangutan.jpg"
             ],
             "loop_to_slide": 0,
             "text_overlay": {
-                "end_sentence": 2,
+                "auto_advance_slide": false,
+                "end_sentence": "all",
                 "paragraph_name": "Hunting_of_the_Snark",
+                "sentence_timing_enabled": true,
                 "start_sentence": 1
             }
         },
