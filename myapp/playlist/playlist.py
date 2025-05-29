@@ -2,13 +2,36 @@
 import os
 import json
 import logging
-# --- MODIFIED: Import get_texts_path ---
-from ..utils.paths import get_playlists_path, get_texts_path
-# --- END MODIFIED ---
-from ..utils.schemas import PLAYLIST_SCHEMA
+from ..utils.paths import get_playlists_path
+from ..utils.schemas import (
+    PLAYLIST_SCHEMA, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
+    DEFAULT_FONT_COLOR, DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
+    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH  # Added DEFAULT_TEXT_VERTICAL_ALIGN
+)
 from ..utils.json_validator import validate_json
 
 logger = logging.getLogger(__name__)
+
+
+def get_default_text_overlay_style():
+    """Returns a dictionary with default text style settings."""
+    return {
+        "font_family": DEFAULT_FONT_FAMILY,
+        "font_size": DEFAULT_FONT_SIZE,
+        "font_color": DEFAULT_FONT_COLOR,
+        "background_color": DEFAULT_BACKGROUND_COLOR,
+        "background_alpha": DEFAULT_BACKGROUND_ALPHA,
+        "text_align": DEFAULT_TEXT_ALIGN,
+        "text_vertical_align": DEFAULT_TEXT_VERTICAL_ALIGN,  # Added
+        "fit_to_width": DEFAULT_FIT_TO_WIDTH,
+        # Base requirements for text_overlay
+        "paragraph_name": "",
+        "start_sentence": 1,
+        "end_sentence": 1,
+        "sentence_timing_enabled": False,
+        "auto_advance_slide": False
+    }
+
 
 class Playlist:
     def __init__(self, file_path=None):
@@ -20,10 +43,8 @@ class Playlist:
             self.load(file_path)
 
     def load(self, file_path):
-        """Loads a playlist from a specific .json file."""
         logger.info(f"Loading playlist: {file_path}")
         if not os.path.exists(file_path):
-            logger.error(f"Playlist file not found: {file_path}")
             raise FileNotFoundError(f"Playlist file not found: {file_path}")
 
         try:
@@ -32,54 +53,80 @@ class Playlist:
 
             is_valid, error = validate_json(data, PLAYLIST_SCHEMA, f"Playlist '{os.path.basename(file_path)}'")
             if not is_valid:
-                logger.error(f"Playlist file has invalid format: {error.message}")
-                raise ValueError(f"Playlist file has invalid format: {error.message}")
+                # Log the schema error details for better debugging
+                schema_error_details = ""
+                if hasattr(error, 'message'): schema_error_details += error.message
+                if hasattr(error, 'path') and error.path: schema_error_details += f" at path: {list(error.path)}"
+                if hasattr(error, 'instance'): schema_error_details += f" for instance: {error.instance}"
+                logger.error(f"Playlist schema validation error: {schema_error_details}")
+                raise ValueError(
+                    f"Playlist file has invalid format: {schema_error_details or 'Unknown validation error'}")
 
             loaded_slides = data.get("slides", [])
             self.slides = []
-            for slide in loaded_slides:
-                 # --- MODIFIED: Add text_overlay handling ---
-                 validated_slide = {
-                     "layers": slide.get("layers", []),
-                     "duration": slide.get("duration", 0),
-                     "loop_to_slide": slide.get("loop_to_slide", 0),
-                     "text_overlay": slide.get("text_overlay", None) # Add this
-                 }
-                 # --- END MODIFIED ---
-                 # Add any other unexpected but allowed properties
-                 validated_slide.update({k: v for k, v in slide.items() if k not in validated_slide})
-                 self.slides.append(validated_slide)
+            default_style_settings = get_default_text_overlay_style()
+
+            for slide_data_from_file in loaded_slides:
+                validated_slide = {
+                    "layers": slide_data_from_file.get("layers", []),
+                    "duration": slide_data_from_file.get("duration", 0),
+                    "loop_to_slide": slide_data_from_file.get("loop_to_slide", 0),
+                    "text_overlay": None
+                }
+
+                text_overlay_data = slide_data_from_file.get("text_overlay")
+                if isinstance(text_overlay_data, dict):
+                    # Ensure all expected keys from default_style_settings are present
+                    # by using default_style_settings as the base and updating with text_overlay_data.
+                    merged_text_overlay = default_style_settings.copy()  # Start with all defaults
+                    merged_text_overlay.update(text_overlay_data)  # Override with actual data
+                    validated_slide["text_overlay"] = merged_text_overlay
+                elif text_overlay_data is None:
+                    validated_slide["text_overlay"] = None
+
+                for key, value in slide_data_from_file.items():
+                    if key not in validated_slide:
+                        validated_slide[key] = value
+
+                self.slides.append(validated_slide)
 
             self.file_path = file_path
             logger.info(f"Successfully loaded playlist: {file_path}")
 
         except (json.JSONDecodeError, IOError, ValueError) as e:
             logger.error(f"Failed to load or parse playlist: {file_path}\n{e}", exc_info=True)
-            raise ValueError(f"Failed to load or parse playlist: {file_path}\n{e}")
+            raise
 
     def save(self, file_path_to_save_to):
-        """Saves the current playlist data to a specific .json file."""
         logger.info(f"Saving playlist to: {file_path_to_save_to}")
         if not file_path_to_save_to:
-            logger.error("Playlist file path not set for saving.")
             raise ValueError("Playlist file path not set for saving.")
 
         os.makedirs(os.path.dirname(file_path_to_save_to), exist_ok=True)
 
         try:
-            # --- MODIFIED: Ensure text_overlay=None is not saved if it's None ---
             slides_to_save = []
             for slide in self.slides:
                 save_slide = slide.copy()
-                if "text_overlay" in save_slide and save_slide["text_overlay"] is None:
-                    del save_slide["text_overlay"]
+                if "text_overlay" in save_slide:
+                    overlay = save_slide["text_overlay"]
+                    if overlay is None or not overlay.get("paragraph_name"):
+                        del save_slide["text_overlay"]
+                    else:
+                        # Optionally, remove default values before saving to keep JSON cleaner
+                        # This is more complex and might be skipped for simplicity
+                        pass
                 slides_to_save.append(save_slide)
-            playlist_data = {"slides": slides_to_save}
-            # --- END MODIFIED ---
 
-            is_valid, _ = validate_json(playlist_data, PLAYLIST_SCHEMA, "Data before saving")
+            playlist_data = {"slides": slides_to_save}
+
+            is_valid, error = validate_json(playlist_data, PLAYLIST_SCHEMA, "Data before saving")
             if not is_valid:
-                logger.warning("Data might not perfectly match schema before saving, but attempting anyway.")
+                schema_error_details = ""
+                if hasattr(error, 'message'): schema_error_details += error.message
+                if hasattr(error, 'path') and error.path: schema_error_details += f" at path: {list(error.path)}"
+                logger.warning(
+                    f"Data validation failed before saving: {schema_error_details}. Attempting to save anyway.")
 
             with open(file_path_to_save_to, 'w', encoding='utf-8') as f:
                 json.dump(playlist_data, f, indent=4)
@@ -92,11 +139,36 @@ class Playlist:
 
     def add_slide(self, slide_data):
         logger.debug(f"Adding slide: {slide_data}")
-        # --- MODIFIED: Ensure new slides have text_overlay ---
-        if "text_overlay" not in slide_data:
+        if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
+            "text_overlay"].get("paragraph_name"):
+            default_style = get_default_text_overlay_style()
+            # Ensure paragraph_name is preserved from input slide_data if it exists
+            para_name = slide_data["text_overlay"].get("paragraph_name", "")
+            merged_overlay = {**default_style, **slide_data["text_overlay"]}
+            merged_overlay["paragraph_name"] = para_name  # Ensure it's not overwritten by default's empty
+            slide_data["text_overlay"] = merged_overlay
+        elif "text_overlay" not in slide_data:
             slide_data["text_overlay"] = None
-        # --- END MODIFIED ---
+
         self.slides.append(slide_data)
+
+    def update_slide(self, index, slide_data):
+        logger.debug(f"Updating slide at index {index} with: {slide_data}")
+        if 0 <= index < len(self.slides):
+            if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
+                "text_overlay"].get("paragraph_name"):
+                default_style = get_default_text_overlay_style()
+                para_name = slide_data["text_overlay"].get("paragraph_name", "")  # Preserve current para_name
+                merged_overlay = {**default_style, **slide_data["text_overlay"]}
+                merged_overlay["paragraph_name"] = para_name
+                slide_data["text_overlay"] = merged_overlay
+            elif "text_overlay" in slide_data and slide_data["text_overlay"] is None:
+                pass
+            elif "text_overlay" not in slide_data:
+                slide_data["text_overlay"] = None
+            self.slides[index] = slide_data
+        else:
+            logger.warning(f"Attempted to update slide at invalid index: {index}")
 
     def remove_slide(self, index):
         logger.debug(f"Removing slide at index: {index}")
@@ -104,17 +176,6 @@ class Playlist:
             del self.slides[index]
         else:
             logger.warning(f"Attempted to remove slide at invalid index: {index}")
-
-    def update_slide(self, index, slide_data):
-        logger.debug(f"Updating slide at index {index} with: {slide_data}")
-        if 0 <= index < len(self.slides):
-            # --- MODIFIED: Ensure updated slides have text_overlay ---
-            if "text_overlay" not in slide_data:
-                slide_data["text_overlay"] = None
-            # --- END MODIFIED ---
-            self.slides[index] = slide_data
-        else:
-            logger.warning(f"Attempted to update slide at invalid index: {index}")
 
     def get_slide(self, index):
         if 0 <= index < len(self.slides):
@@ -128,13 +189,18 @@ class Playlist:
 
     def set_slides(self, slides_data):
         logger.debug("Setting slides.")
-        # --- MODIFIED: Ensure setting slides includes text_overlay ---
         self.slides = []
+        default_style = get_default_text_overlay_style()
         for slide in slides_data:
-             if "text_overlay" not in slide:
-                 slide["text_overlay"] = None
-             self.slides.append(slide)
-        # --- END MODIFIED ---
+            if "text_overlay" in slide and isinstance(slide["text_overlay"], dict) and slide["text_overlay"].get(
+                    "paragraph_name"):
+                para_name = slide["text_overlay"].get("paragraph_name", "")  # Preserve current para_name
+                merged_overlay = {**default_style, **slide["text_overlay"]}
+                merged_overlay["paragraph_name"] = para_name
+                slide["text_overlay"] = merged_overlay
+            elif "text_overlay" not in slide or slide["text_overlay"] is None:
+                slide["text_overlay"] = None
+            self.slides.append(slide)
 
     def get_playlists_directory(self):
         return self.playlists_dir

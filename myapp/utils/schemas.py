@@ -4,7 +4,16 @@
 Defines the JSON schemas used for validation in the application.
 """
 
-# Schema for individual paragraph files (e.g., my_paragraph.json)
+# Default text style values
+DEFAULT_FONT_FAMILY = "Arial"
+DEFAULT_FONT_SIZE = 48
+DEFAULT_FONT_COLOR = "#FFFFFF"  # White
+DEFAULT_BACKGROUND_COLOR = "#000000"  # Black
+DEFAULT_BACKGROUND_ALPHA = 150  # ~60% opacity (0-255 scale)
+DEFAULT_TEXT_ALIGN = "center" # horizontal: left, center, right
+DEFAULT_TEXT_VERTICAL_ALIGN = "bottom" # top, middle, bottom
+DEFAULT_FIT_TO_WIDTH = False
+
 PARAGRAPH_SCHEMA = {
     "type": "object",
     "properties": {
@@ -18,10 +27,10 @@ PARAGRAPH_SCHEMA = {
                     "delay_seconds": {
                         "type": "number",
                         "minimum": 0,
-                        "default": 2.0 # Changed default to 2.0s
+                        "default": 2.0
                     }
                 },
-                "required": ["text"], # Make delay_seconds optional (will use default)
+                "required": ["text"],
                 "additionalProperties": False
             },
             "default": []
@@ -31,7 +40,6 @@ PARAGRAPH_SCHEMA = {
     "additionalProperties": False
 }
 
-# Schema for playlist files (playlist.json)
 PLAYLIST_SCHEMA = {
     "type": "object",
     "properties": {
@@ -66,19 +74,59 @@ PLAYLIST_SCHEMA = {
                                     {"type": "string", "pattern": "^all$"}
                                 ]
                             },
-                            # --- NEW TIMING FLAGS ---
                             "sentence_timing_enabled": {
                                 "type": "boolean",
-                                "default": False # Default to manual (space bar)
+                                "default": False
                             },
                             "auto_advance_slide": {
                                 "type": "boolean",
-                                "default": False # Default to stopping at last sentence
+                                "default": False
+                            },
+                            "font_family": {
+                                "type": "string",
+                                "default": DEFAULT_FONT_FAMILY
+                            },
+                            "font_size": {
+                                "type": "integer",
+                                "minimum": 8,
+                                "maximum": 200,
+                                "default": DEFAULT_FONT_SIZE
+                            },
+                            "font_color": {
+                                "type": "string",
+                                "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$",
+                                "default": DEFAULT_FONT_COLOR
+                            },
+                            "background_color": {
+                                "type": "string",
+                                "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$",
+                                "default": DEFAULT_BACKGROUND_COLOR
+                            },
+                            "background_alpha": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 255,
+                                "default": DEFAULT_BACKGROUND_ALPHA
+                            },
+                            "text_align": { # Horizontal alignment
+                                "type": "string",
+                                "enum": ["left", "center", "right"],
+                                "default": DEFAULT_TEXT_ALIGN
+                            },
+                            # --- NEW VERTICAL ALIGN PROPERTY ---
+                            "text_vertical_align": {
+                                "type": "string",
+                                "enum": ["top", "middle", "bottom"],
+                                "default": DEFAULT_TEXT_VERTICAL_ALIGN
+                            },
+                            # --- END NEW VERTICAL ALIGN PROPERTY ---
+                            "fit_to_width": {
+                                "type": "boolean",
+                                "default": DEFAULT_FIT_TO_WIDTH
                             }
-                            # --- END NEW TIMING FLAGS ---
                         },
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
-                        "additionalProperties": False # Keep text_overlay strict
+                        "additionalProperties": False
                     }
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
@@ -91,7 +139,6 @@ PLAYLIST_SCHEMA = {
     "additionalProperties": True
 }
 
-# Schema for settings file (settings.json)
 SETTINGS_SCHEMA = {
     "type": "object",
     "properties": {

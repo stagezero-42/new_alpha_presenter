@@ -15,11 +15,19 @@
             ],
             "loop_to_slide": 0,
             "text_overlay": {
-                "auto_advance_slide": false,
-                "end_sentence": "all",
+                "font_family": "Liberation Sans",
+                "font_size": 48,
+                "font_color": "#241f31",
+                "background_color": "#99c1f1",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "middle",
+                "fit_to_width": false,
                 "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 1,
+                "end_sentence": "all",
                 "sentence_timing_enabled": true,
-                "start_sentence": 1
+                "auto_advance_slide": false
             }
         },
         {
@@ -29,9 +37,19 @@
             ],
             "loop_to_slide": 0,
             "text_overlay": {
-                "end_sentence": "all",
+                "font_family": "Liberation Sans",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "bottom",
+                "fit_to_width": false,
                 "paragraph_name": "Hunting_of_the_Snark",
-                "start_sentence": 1
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": false,
+                "auto_advance_slide": false
             }
         },
         {
@@ -41,9 +59,19 @@
             ],
             "loop_to_slide": 1,
             "text_overlay": {
-                "end_sentence": 1,
+                "font_family": "Liberation Sans",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#f66151",
+                "background_alpha": 155,
+                "text_align": "right",
+                "text_vertical_align": "top",
+                "fit_to_width": false,
                 "paragraph_name": "humpty_dumpty",
-                "start_sentence": 1
+                "start_sentence": 1,
+                "end_sentence": 1,
+                "sentence_timing_enabled": false,
+                "auto_advance_slide": false
             }
         },
         {
@@ -76,9 +104,19 @@
             ],
             "loop_to_slide": 0,
             "text_overlay": {
-                "end_sentence": 1,
+                "font_family": "Arial",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 150,
+                "text_align": "center",
+                "text_vertical_align": "bottom",
+                "fit_to_width": false,
                 "paragraph_name": "humpty_dumpty",
-                "start_sentence": 1
+                "start_sentence": 1,
+                "end_sentence": 1,
+                "sentence_timing_enabled": false,
+                "auto_advance_slide": false
             }
         },
         {
