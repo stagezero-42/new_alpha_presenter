@@ -2,11 +2,7 @@
     "name": "humpty_dumpty",
     "sentences": [
         {
-            "text": "Humpty Dumpty sat on a wall,",
-            "delay_seconds": 0.0
-        },
-        {
-            "text": "Humpty Dumpty had a great fall.",
+            "text": "Humpty Dumpty\nsat on a wall, \nHumpty Dumpty \nhad a great fall.",
             "delay_seconds": 0.0
         },
         {
@@ -14,15 +10,7 @@
             "delay_seconds": 0.0
         },
         {
-            "text": "Couldn't put Humpty together again.",
-            "delay_seconds": 0.0
-        },
-        {
-            "text": "Poor old Humpty",
-            "delay_seconds": 0.0
-        },
-        {
-            "text": "Here is a new one",
+            "text": "Couldn't put Humpty together again. Poor old Humpty Here is a new one",
             "delay_seconds": 0.0
         }
     ]
