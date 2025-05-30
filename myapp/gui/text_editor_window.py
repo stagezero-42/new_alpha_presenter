@@ -3,18 +3,20 @@ import os
 import logging
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QListWidget, QMessageBox, QInputDialog,
-    QListWidgetItem, QAbstractItemView, QSplitter, QLabel,
-    QGroupBox, QFormLayout, QTextEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView, QDoubleSpinBox
+    QListWidget, QMessageBox, QInputDialog,
+    QSplitter, QLabel, QGroupBox, QTextEdit, QTableWidget,
+    QHeaderView, QAbstractItemView
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QIcon, QTextCursor
+from PySide6.QtGui import QIcon
 
+# Local Imports
 from ..text.paragraph_manager import ParagraphManager
 from ..utils.paths import get_icon_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
+from .sentence_manager import SentenceManager
+from .text_import_dialog import TextImportDialog  # New Import
 
 logger = logging.getLogger(__name__)
 
@@ -30,45 +32,63 @@ class TextEditorWindow(QMainWindow):
         self.paragraph_manager = ParagraphManager()
         self.paragraphs_cache = {}
         self.current_paragraph_name = None
-        self._block_signals = False
+        self._block_list_signals = False
 
-        try:
-            icon_path = get_icon_file_path("text.png")
-            if not icon_path or not os.path.exists(icon_path):
-                icon_path = get_icon_file_path("edit.png")
-            if icon_path and os.path.exists(icon_path): self.setWindowIcon(QIcon(icon_path))
-        except Exception as e:
-            logger.error(f"Failed to set TextEditorWindow icon: {e}", exc_info=True)
+        self._setup_ui()
 
-        self.setup_ui()
+        self.sentence_manager = SentenceManager(self, self.sent_table_widget, self.sent_edit_text)
+        self.sentence_manager.sentences_updated.connect(lambda: self.mark_dirty(True))
+
         self.load_and_list_paragraphs()
         self.update_ui_state()
         logger.debug("TextEditorWindow initialized.")
 
-    def setup_ui(self):
+    def _setup_ui(self):
         logger.debug("Setting up TextEditorWindow UI...")
         central_widget = QWidget()
+        self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
+        self._setup_paragraph_panel(splitter)
+        self._setup_sentence_panel(splitter)
+
+        splitter.setSizes([250, 650])
+        main_layout.addWidget(splitter)
+        logger.debug("TextEditorWindow UI setup complete.")
+
+    def _setup_paragraph_panel(self, splitter):
+        """Sets up the left panel for paragraph listing and management."""
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.addWidget(QLabel("Paragraphs:"))
+
         self.para_list_widget = QListWidget()
         self.para_list_widget.currentItemChanged.connect(self.handle_para_selection_changed)
         left_layout.addWidget(self.para_list_widget)
+
         para_buttons_layout = QHBoxLayout()
         self.add_para_button = create_button("Add", "add.png", "Add New Paragraph", self.add_paragraph)
-        self.rename_para_button = create_button("Rename", "edit.png", "Rename", self.rename_paragraph)
-        self.del_para_button = create_button("Delete", "remove.png", "Delete", self.delete_paragraph)
+        # ******** NEW IMPORT BUTTON ********
+        self.import_para_button = create_button("Import", "import.png", "Import Text File",
+                                                self.open_text_import_dialog)
+        # ***********************************
+        self.rename_para_button = create_button("Rename", "edit.png", "Rename Selected Paragraph",
+                                                self.rename_paragraph)
+        self.del_para_button = create_button("Delete", "remove.png", "Delete Selected Paragraph", self.delete_paragraph)
+
         para_buttons_layout.addWidget(self.add_para_button)
+        para_buttons_layout.addWidget(self.import_para_button)  # Added here
         para_buttons_layout.addWidget(self.rename_para_button)
         para_buttons_layout.addWidget(self.del_para_button)
         left_layout.addLayout(para_buttons_layout)
         splitter.addWidget(left_widget)
 
+    def _setup_sentence_panel(self, splitter):
+        """Sets up the right panel for sentence editing."""
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+
         top_right_buttons_layout = QHBoxLayout()
         top_right_buttons_layout.addStretch()
         self.save_button = create_button("Save All Changes", "save.png", on_click=self.save_all_changes)
@@ -90,39 +110,64 @@ class TextEditorWindow(QMainWindow):
         self.sent_table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.sent_table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.sent_table_widget.verticalHeader().setSectionsMovable(True)
-        self.sent_table_widget.verticalHeader().sectionMoved.connect(self.handle_sentence_reorder)
         self.sent_table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.sent_table_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.sent_table_widget.itemSelectionChanged.connect(self.handle_sent_selection_changed)
-        self.sent_table_widget.itemChanged.connect(self.handle_sent_text_changed)
         group_layout.addWidget(self.sent_table_widget)
 
         sent_buttons_layout = QHBoxLayout()
-        self.add_sent_button = create_button("Add", "add.png", "Add Sentence", self.add_sentence)
-        self.del_sent_button = create_button("Remove", "remove.png", "Remove Selected Sentence", self.delete_sentence)
+        self.add_sent_button = create_button("Add", "add.png", "Add Sentence",
+                                             lambda: self.sentence_manager.add_sentence())
+        self.del_sent_button = create_button("Remove", "remove.png", "Remove Selected Sentence",
+                                             lambda: self.sentence_manager.delete_sentence())
         sent_buttons_layout.addWidget(self.add_sent_button)
         sent_buttons_layout.addWidget(self.del_sent_button)
         sent_buttons_layout.addStretch()
-        self.split_sent_button = create_button("Split", "split.png", "Split Sentence at Cursor", self.split_sentence)
-        # --- NEW JOIN BUTTON ---
+        self.split_sent_button = create_button("Split", "split.png", "Split Sentence at Cursor",
+                                               lambda: self.sentence_manager.split_sentence())
         self.join_sent_button = create_button("Join", "join.png", "Join Selected Sentence with Next",
-                                              self.join_sentence)
+                                              lambda: self.sentence_manager.join_sentence())
         sent_buttons_layout.addWidget(self.split_sent_button)
         sent_buttons_layout.addWidget(self.join_sent_button)
-        # --- END NEW JOIN BUTTON ---
         group_layout.addLayout(sent_buttons_layout)
 
         group_layout.addWidget(QLabel("Edit Selected Sentence Text:"))
         self.sent_edit_text = QTextEdit()
-        self.sent_edit_text.textChanged.connect(self.handle_sent_editor_changed)
         group_layout.addWidget(self.sent_edit_text)
 
         right_layout.addWidget(self.para_group_box)
         splitter.addWidget(right_widget)
-        splitter.setSizes([250, 650])
-        main_layout.addWidget(splitter)
-        self.setCentralWidget(central_widget)
-        logger.debug("TextEditorWindow UI setup complete.")
+
+        try:
+            icon_path = get_icon_file_path("text.png") or get_icon_file_path("edit.png")
+            if icon_path and os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+        except Exception as e:
+            logger.error(f"Failed to set TextEditorWindow icon: {e}", exc_info=True)
+
+    # ******** NEW METHOD for Text Import Dialog ********
+    def open_text_import_dialog(self):
+        logger.debug("Open text import dialog called.")
+        # Pass self.paragraph_manager to the dialog for name validation and saving
+        import_dialog = TextImportDialog(self, self.paragraph_manager)
+
+        # Connect the signal from the dialog to a handler in this window
+        import_dialog.paragraph_imported.connect(self._handle_paragraph_imported)
+
+        import_dialog.exec()  # Show as a modal dialog
+
+    def _handle_paragraph_imported(self, new_paragraph_name):
+        """Called when the TextImportDialog successfully imports a paragraph."""
+        logger.info(f"Paragraph '{new_paragraph_name}' was imported. Refreshing list.")
+        self.load_and_list_paragraphs()  # Refresh the paragraph list
+
+        # Optionally, try to select the newly imported paragraph
+        for i in range(self.para_list_widget.count()):
+            if self.para_list_widget.item(i).text() == new_paragraph_name:
+                self.para_list_widget.setCurrentRow(i)
+                break
+        self.mark_dirty(False)  # A new file was created and saved, so editor itself isn't "dirty" with changes to it
+
+    # *****************************************************
 
     def mark_dirty(self, dirty=True):
         self.setWindowModified(dirty)
@@ -130,419 +175,267 @@ class TextEditorWindow(QMainWindow):
 
     def load_and_list_paragraphs(self):
         logger.debug("Loading and listing paragraphs...")
-        current_selection = self.para_list_widget.currentItem().text() if self.para_list_widget.currentItem() else None
-        self.para_list_widget.currentItemChanged.disconnect(self.handle_para_selection_changed)
+        current_selection_name = self.current_paragraph_name
+
+        self._block_list_signals = True
         self.para_list_widget.clear()
-        self.paragraphs_cache = {}
+        # self.paragraphs_cache.clear() # Only clear if you intend to reload all from disk
+        # If keeping cache, only add/remove specific items
+        # For simplicity with import, a full reload of names is fine.
+        # Cache will be populated on selection or if already present.
+        self._block_list_signals = False
+
         try:
-            para_names = self.paragraph_manager.list_paragraphs()
-            self.para_list_widget.addItems(sorted(para_names))
-        except Exception as e:
-            QMessageBox.critical(self, "Load Error", f"Failed to list paragraphs: {e}")
-
-        if current_selection:
-            items = self.para_list_widget.findItems(current_selection, Qt.MatchFlag.MatchExactly)
-            if items:
-                self.para_list_widget.setCurrentItem(items[0])
-            else:
+            para_names = sorted(self.paragraph_manager.list_paragraphs())
+            if not para_names:
                 self.current_paragraph_name = None
-
-        self.para_list_widget.currentItemChanged.connect(self.handle_para_selection_changed)
-        if not self.para_list_widget.currentItem():
-            self.current_paragraph_name = None
-            self.populate_sentence_table()
-        self.update_ui_state()
-
-    def handle_para_selection_changed(self, current, previous):
-        if current:
-            self.current_paragraph_name = current.text()
-            if self.current_paragraph_name not in self.paragraphs_cache:
-                try:
-                    self.paragraphs_cache[self.current_paragraph_name] = \
-                        self.paragraph_manager.load_paragraph(self.current_paragraph_name)
-                except Exception as e:
-                    QMessageBox.critical(self, "Load Error", f"Failed to load '{self.current_paragraph_name}': {e}")
-                    self.current_paragraph_name = None
-            self.populate_sentence_table()
-        else:
-            self.current_paragraph_name = None
-            self.populate_sentence_table()
-        self.update_ui_state()
-
-    def populate_sentence_table(self, select_row=-1):
-        self._block_signals = True
-        self.sent_table_widget.clearContents()
-        self.sent_table_widget.setRowCount(0)
-
-        if self.current_paragraph_name and self.current_paragraph_name in self.paragraphs_cache:
-            para_data = self.paragraphs_cache[self.current_paragraph_name]
-            if para_data:
-                sentences = para_data.get("sentences", [])
-                self.sent_table_widget.setRowCount(len(sentences))
-                for i, sentence_data in enumerate(sentences):
-                    text = sentence_data.get("text", "[Empty]")
-                    delay = sentence_data.get("delay_seconds", 2.0)
-
-                    text_item = QTableWidgetItem(text)
-                    self.sent_table_widget.setItem(i, 0, text_item)
-
-                    spin_box = QDoubleSpinBox()
-                    spin_box.setMinimum(0.0)
-                    spin_box.setMaximum(600.0)
-                    spin_box.setSingleStep(0.1)
-                    spin_box.setValue(delay)
-                    spin_box.setSuffix(" s")
-                    spin_box.setProperty("row", i)
-                    spin_box.valueChanged.connect(self.handle_delay_changed)
-                    self.sent_table_widget.setCellWidget(i, 1, spin_box)
-
-            self.para_name_label.setText(f"Paragraph: {self.current_paragraph_name}")
-            self.sent_table_widget.resizeRowsToContents()
-        else:
-            self.para_name_label.setText("Paragraph: (None)")
-
-        self._block_signals = False
-        if select_row != -1 and self.sent_table_widget.rowCount() > 0:
-            actual_row = min(select_row, self.sent_table_widget.rowCount() - 1)
-            self.sent_table_widget.selectRow(actual_row)
-        else:  # Explicitly call selection changed to clear editor if no selection or table empty
-            self.handle_sent_selection_changed()
-
-    def handle_delay_changed(self, value):
-        if self._block_signals or not self.current_paragraph_name: return
-        sender = self.sender()
-        if sender:
-            row = sender.property("row")
-            # Ensure cache and row index are valid
-            if row is not None and self.current_paragraph_name in self.paragraphs_cache and \
-                    0 <= row < len(self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])):
-                self.paragraphs_cache[self.current_paragraph_name]["sentences"][row]["delay_seconds"] = value
-                self.mark_dirty()
-
-    def handle_sent_selection_changed(self):
-        if self._block_signals: return
-        self._block_signals = True
-        selected_items = self.sent_table_widget.selectedItems()
-        if selected_items and self.current_paragraph_name and self.current_paragraph_name in self.paragraphs_cache:
-            row = self.sent_table_widget.row(selected_items[0])
-            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-            if 0 <= row < len(sentences):
-                text = sentences[row].get("text", "")
-                self.sent_edit_text.setText(text)
-                self.sent_edit_text.setEnabled(True)
-            else:
-                self.sent_edit_text.clear()
-                self.sent_edit_text.setEnabled(False)
-        else:
-            self.sent_edit_text.clear()
-            self.sent_edit_text.setEnabled(False)
-        self._block_signals = False
-        self.update_ui_state()
-
-    def handle_sent_text_changed(self, item):  # From QTableWidget itemChanged
-        if self._block_signals or not self.current_paragraph_name: return
-        row = item.row()
-        new_text = item.text()
-        if self.current_paragraph_name in self.paragraphs_cache:
-            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-            if 0 <= row < len(sentences):
-                sentences[row]["text"] = new_text
-                self._block_signals = True
-                if self.sent_table_widget.currentRow() == row:
-                    self.sent_edit_text.setText(new_text)
-                self._block_signals = False
-                self.mark_dirty()
-
-    def handle_sent_editor_changed(self):  # From QTextEdit textChanged
-        if self._block_signals or not self.current_paragraph_name: return
-
-        current_row = self.sent_table_widget.currentRow()
-        if current_row == -1: return  # No row selected in table
-
-        new_text = self.sent_edit_text.toPlainText()
-
-        if self.current_paragraph_name in self.paragraphs_cache:
-            sentences = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-            if 0 <= current_row < len(sentences):
-                sentences[current_row]["text"] = new_text
-                self._block_signals = True
-                # Update table cell text without triggering itemChanged again
-                table_item = self.sent_table_widget.item(current_row, 0)
-                if table_item:
-                    table_item.setText(new_text)
-                else:  # Should not happen if table populated correctly
-                    self.sent_table_widget.setItem(current_row, 0, QTableWidgetItem(new_text))
-                self._block_signals = False
-                self.mark_dirty()
-
-    def handle_sentence_reorder(self, logical_index_moved_from, old_visual_index, new_visual_index):
-        # Note: For verticalHeader().sectionMoved, logical_index IS the old_visual_index before move
-        if not self.current_paragraph_name or self._block_signals or old_visual_index == new_visual_index: return
-        logger.debug(f"Row moved from visual index {old_visual_index} to {new_visual_index}")
-
-        self._block_signals = True
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name]['sentences']
-        moved_sentence = sentences_list.pop(old_visual_index)
-        sentences_list.insert(new_visual_index, moved_sentence)
-        self._block_signals = False
-
-        self.mark_dirty()
-        self.populate_sentence_table(select_row=new_visual_index)
-
-    def add_sentence(self):
-        if not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
-        new_sentence = {"text": "New sentence.", "delay_seconds": 2.0}
-
-        current_row = self.sent_table_widget.currentRow()
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name].setdefault("sentences", [])
-        insert_index = current_row + 1 if current_row != -1 else len(sentences_list)
-
-        sentences_list.insert(insert_index, new_sentence)
-        self.populate_sentence_table(select_row=insert_index)
-        self.mark_dirty()
-
-    def delete_sentence(self):
-        current_row = self.sent_table_widget.currentRow()
-        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
-
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-        if not (0 <= current_row < len(sentences_list)): return  # Defensive
-
-        del sentences_list[current_row]
-
-        new_row_count = len(sentences_list)
-        select_index = -1
-        if new_row_count > 0:
-            select_index = min(current_row, new_row_count - 1)
-
-        self.populate_sentence_table(select_row=select_index)
-        self.mark_dirty()
-
-    def split_sentence(self):
-        current_row = self.sent_table_widget.currentRow()
-        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
-
-        cursor = self.sent_edit_text.textCursor()
-        pos = cursor.position()
-        text = self.sent_edit_text.toPlainText()
-
-        if 0 < pos < len(text):
-            text1 = text[:pos].strip()
-            text2 = text[pos:].strip()
-
-            if not text1 or not text2:
-                QMessageBox.warning(self, "Split Error",
-                                    "Cannot split into an empty sentence. Ensure cursor is not next to spaces that result in an empty part.")
+                if self.sentence_manager: self.sentence_manager.set_current_paragraph(None, None)
+                self.para_name_label.setText("Paragraph: (None)")
+                self.update_ui_state()
                 return
 
-            sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-            if not (0 <= current_row < len(sentences_list)): return
+            self.para_list_widget.addItems(para_names)
 
-            current_sentence_obj = sentences_list[current_row]
-            current_delay = current_sentence_obj.get("delay_seconds", 2.0)
+            restored_selection = False
+            if current_selection_name and current_selection_name in para_names:
+                for i in range(self.para_list_widget.count()):
+                    if self.para_list_widget.item(i).text() == current_selection_name:
+                        self.para_list_widget.setCurrentRow(i)
+                        restored_selection = True
+                        break
 
-            current_sentence_obj["text"] = text1
+            if not restored_selection and self.para_list_widget.count() > 0:
+                self.para_list_widget.setCurrentRow(0)  # Select first if previous was deleted or list was empty
 
-            new_sentence_data = {"text": text2, "delay_seconds": current_delay}
-            insert_index = current_row + 1
-            sentences_list.insert(insert_index, new_sentence_data)
+            # If list is empty after operations or still no selection despite items.
+            if self.para_list_widget.count() == 0 or not self.para_list_widget.currentItem():
+                self.handle_para_selection_changed(None, None)
 
-            self.populate_sentence_table(select_row=insert_index)
-            self.mark_dirty()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Load Error", f"Failed to list paragraphs: {e}")
+            self.current_paragraph_name = None
+            if self.sentence_manager: self.sentence_manager.set_current_paragraph(None, None)
+            self.para_name_label.setText("Paragraph: (None)")
+
+        self.update_ui_state()  # Ensure UI state is correct after loading
+
+    def handle_para_selection_changed(self, current_item, previous_item):
+        if self._block_list_signals:
+            return
+
+        if not current_item:
+            self.current_paragraph_name = None
+            if self.sentence_manager: self.sentence_manager.set_current_paragraph(None, None)
+            self.para_name_label.setText("Paragraph: (None)")
+            self.update_ui_state()
+            return
+
+        selected_para_name = current_item.text()
+
+        if selected_para_name == self.current_paragraph_name and self.current_paragraph_name in self.paragraphs_cache:
+            # If it's the same selection and data is cached, ensure SentenceManager is synced
+            # This can happen if load_and_list_paragraphs re-selects the current item
+            if self.sentence_manager:
+                self.sentence_manager.set_current_paragraph(
+                    self.current_paragraph_name,
+                    self.paragraphs_cache[self.current_paragraph_name]
+                )
+            self.update_ui_state()  # Ensure UI state reflects this
+            return
+
+        self.current_paragraph_name = selected_para_name
+        logger.info(f"Paragraph selected: {self.current_paragraph_name}")
+
+        if self.current_paragraph_name not in self.paragraphs_cache:
+            try:
+                self.paragraphs_cache[self.current_paragraph_name] = \
+                    self.paragraph_manager.load_paragraph(self.current_paragraph_name)
+            except Exception as e:
+                QMessageBox.critical(self, "Load Error", f"Failed to load '{self.current_paragraph_name}': {e}")
+                self.paragraphs_cache.pop(self.current_paragraph_name, None)
+                self.current_paragraph_name = None
+                if self.sentence_manager: self.sentence_manager.set_current_paragraph(None, None)
+                self.para_name_label.setText("Paragraph: (None)")
+                # Consider de-selecting from list or selecting a fallback.
+                # self.para_list_widget.setCurrentItem(None) # This would trigger this handler again.
+                self.update_ui_state()
+                return
+
+        if self.current_paragraph_name and self.current_paragraph_name in self.paragraphs_cache:
+            if self.sentence_manager: self.sentence_manager.set_current_paragraph(
+                self.current_paragraph_name,
+                self.paragraphs_cache[self.current_paragraph_name]
+            )
+            self.para_name_label.setText(f"Paragraph: {self.current_paragraph_name}")
         else:
-            QMessageBox.information(self, "Split Info",
-                                    "Place cursor within the text (not at the very start or end) to split.")
-
-    # --- NEW JOIN SENTENCE METHOD ---
-    def join_sentence(self):
-        current_row = self.sent_table_widget.currentRow()
-        if current_row == -1 or not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache:
-            logger.debug("Join sentence: No row selected or no paragraph.")
-            return
-
-        sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-        if not (0 <= current_row < len(sentences_list) - 1):  # Must not be the last sentence
-            logger.debug("Join sentence: Selected sentence is the last one or invalid.")
-            QMessageBox.information(self, "Join Info",
-                                    "Select a sentence that is not the last one to join it with the next.")
-            return
-
-        sentence1_obj = sentences_list[current_row]
-        sentence2_obj = sentences_list[current_row + 1]
-
-        text1 = sentence1_obj.get("text", "").strip()
-        text2 = sentence2_obj.get("text", "").strip()
-
-        joined_text = text1
-        if text1 and text2:
-            joined_text += " " + text2
-        elif text2:
-            joined_text = text2
-        # If text2 is empty, joined_text remains text1
-
-        sentence1_obj["text"] = joined_text.strip()
-        # Keep delay of the first sentence (sentence1_obj["delay_seconds"] is preserved)
-
-        del sentences_list[current_row + 1]  # Remove the second sentence
-
-        logger.info(f"Joined sentence at row {current_row} with row {current_row + 1}.")
-        self.populate_sentence_table(select_row=current_row)
-        self.mark_dirty()
-
-    # --- END NEW JOIN SENTENCE METHOD ---
+            if self.sentence_manager: self.sentence_manager.set_current_paragraph(None, None)
+            self.para_name_label.setText("Paragraph: (None)")
+        self.update_ui_state()
 
     def add_paragraph(self):
         para_name, ok = QInputDialog.getText(self, "New Paragraph", "Enter name:")
         if ok and para_name:
             safe_name = para_name.strip().replace(" ", "_")
             if not is_safe_filename_component(f"{safe_name}.json"):
-                QMessageBox.warning(self, "Invalid Name", "Invalid characters.");
+                QMessageBox.warning(self, "Invalid Name", "Name contains invalid characters or is reserved.");
                 return
             if safe_name in self.paragraph_manager.list_paragraphs():
-                QMessageBox.warning(self, "Name Exists", "Name already exists.");
+                QMessageBox.warning(self, "Name Exists", "A paragraph with this name already exists.");
                 return
 
-            new_para = {"name": safe_name, "sentences": []}
-            if self.paragraph_manager.save_paragraph(safe_name, new_para):
-                self.load_and_list_paragraphs()
-                items = self.para_list_widget.findItems(safe_name, Qt.MatchFlag.MatchExactly)
-                if items: self.para_list_widget.setCurrentItem(items[0])
-                self.mark_dirty(False)
+            new_para_data = {"name": safe_name, "sentences": []}
+            if self.paragraph_manager.save_paragraph(safe_name, new_para_data):
+                self.paragraphs_cache[safe_name] = new_para_data
+                self._handle_paragraph_imported(safe_name)  # Reuse logic to refresh and select
             else:
-                QMessageBox.critical(self, "Save Error", "Could not save.")
+                QMessageBox.critical(self, "Save Error", "Could not save the new paragraph.")
 
     def rename_paragraph(self):
-        current_item = self.para_list_widget.currentItem()
-        if not current_item: return
-        old_name = current_item.text()
-        new_name, ok = QInputDialog.getText(self, "Rename", f"New name for '{old_name}':", text=old_name)
-        if ok and new_name and new_name != old_name:
-            safe_new_name = new_name.strip().replace(" ", "_")
+        current_list_item = self.para_list_widget.currentItem()
+        if not current_list_item or not self.current_paragraph_name: return
+
+        old_name = self.current_paragraph_name
+        new_name_input, ok = QInputDialog.getText(self, "Rename Paragraph", f"New name for '{old_name}':",
+                                                  text=old_name)
+
+        if ok and new_name_input and new_name_input.strip():
+            safe_new_name = new_name_input.strip().replace(" ", "_")
+            if safe_new_name == old_name: return
+
             if not is_safe_filename_component(f"{safe_new_name}.json"):
-                QMessageBox.warning(self, "Invalid Name", "Invalid characters.");
+                QMessageBox.warning(self, "Invalid Name", "New name contains invalid characters or is reserved.");
                 return
-            if safe_new_name in self.paragraph_manager.list_paragraphs():
-                QMessageBox.warning(self, "Name Exists", "Name already exists.");
+
+            existing_names_lower = [name.lower() for name in self.paragraph_manager.list_paragraphs()]
+            if safe_new_name.lower() in existing_names_lower and safe_new_name.lower() != old_name.lower():
+                QMessageBox.warning(self, "Name Exists", "A paragraph with the new name already exists.");
                 return
 
             try:
-                para_data = self.paragraphs_cache.pop(old_name, None) or self.paragraph_manager.load_paragraph(old_name)
-                if not para_data: QMessageBox.critical(self, "Rename Error", "Could not load."); return
+                current_data = self.paragraphs_cache.get(old_name)
+                if not current_data:
+                    current_data = self.paragraph_manager.load_paragraph(old_name)
 
-                para_data["name"] = safe_new_name
-                if self.paragraph_manager.save_paragraph(safe_new_name, para_data):
-                    self.paragraph_manager.delete_paragraph(old_name)
-                    self.load_and_list_paragraphs()
-                    items = self.para_list_widget.findItems(safe_new_name, Qt.MatchFlag.MatchExactly)
-                    if items: self.para_list_widget.setCurrentItem(items[0])
+                current_data["name"] = safe_new_name
+
+                if self.paragraph_manager.save_paragraph(safe_new_name, current_data):
+                    if old_name.lower() != safe_new_name.lower():
+                        self.paragraph_manager.delete_paragraph(old_name)
+
+                    if old_name in self.paragraphs_cache:
+                        del self.paragraphs_cache[old_name]
+                    self.paragraphs_cache[safe_new_name] = current_data
+
+                    self.current_paragraph_name = safe_new_name
+                    self._handle_paragraph_imported(safe_new_name)  # Reuse logic
                 else:
-                    self.paragraphs_cache[old_name] = para_data
-                    para_data["name"] = old_name
-                    QMessageBox.critical(self, "Save Error", "Could not save.")
+                    current_data["name"] = old_name
+                    QMessageBox.critical(self, "Save Error", "Could not save paragraph with the new name.")
             except Exception as e:
-                QMessageBox.critical(self, "Rename Error", f"Failed: {e}")
+                QMessageBox.critical(self, "Rename Error", f"Failed to rename paragraph: {e}")
 
     def delete_paragraph(self):
-        current_item = self.para_list_widget.currentItem()
-        if not current_item: return
-        para_name = current_item.text()
-        reply = QMessageBox.question(self, "Confirm Delete", f"Delete '{para_name}'?",
+        if not self.current_paragraph_name: return
+        para_name_to_delete = self.current_paragraph_name
+
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     f"Are you sure you want to delete '{para_name_to_delete}'?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            if self.paragraph_manager.delete_paragraph(para_name):
-                if para_name in self.paragraphs_cache: del self.paragraphs_cache[para_name]
-                self.load_and_list_paragraphs();
-                self.mark_dirty(False)
+            if self.paragraph_manager.delete_paragraph(para_name_to_delete):
+                if para_name_to_delete in self.paragraphs_cache:
+                    del self.paragraphs_cache[para_name_to_delete]
+
+                self.current_paragraph_name = None
+                self._handle_paragraph_imported(None)  # Pass None to signal refresh without specific selection target
             else:
-                QMessageBox.critical(self, "Delete Error", "Could not delete.")
+                QMessageBox.critical(self, "Delete Error", "Could not delete the paragraph file.")
 
     def save_all_changes(self):
         logger.info("Saving all changes...")
-        saved_count = 0;
-        failed_count = 0
         if not self.isWindowModified():
             QMessageBox.information(self, "No Changes", "No changes to save.");
             return
 
-        self.update_cache_from_table()
-
-        for name, data in self.paragraphs_cache.items():
-            try:
-                if self.paragraph_manager.save_paragraph(name, data):
-                    saved_count += 1
-                else:
+        saved_count, failed_count = 0, 0
+        for name in list(self.paragraphs_cache.keys()):
+            data = self.paragraphs_cache[name]
+            if data:
+                try:
+                    if data.get("name") != name:
+                        logger.warning(f"Correcting internal name for '{name}' before saving.")
+                        data["name"] = name
+                    if self.paragraph_manager.save_paragraph(name, data):
+                        saved_count += 1
+                    else:
+                        failed_count += 1
+                except Exception as e:
+                    logger.error(f"Error saving paragraph '{name}': {e}", exc_info=True)
                     failed_count += 1
-            except Exception as e:
-                logger.error(f"Error saving '{name}': {e}", exc_info=True);
-                failed_count += 1
 
         if failed_count > 0:
-            QMessageBox.critical(self, "Save Error", f"Failed to save {failed_count} file(s).")
-        elif saved_count > 0:
-            QMessageBox.information(self, "Save Complete", f"Saved {saved_count} file(s)."); self.mark_dirty(False)
+            QMessageBox.warning(self, "Save Error", f"Failed to save {failed_count} paragraph(s). Check logs.")
+        if saved_count > 0:
+            QMessageBox.information(self, "Save Complete", f"Successfully saved {saved_count} paragraph(s).")
+
+        if failed_count == 0 and (
+                saved_count > 0 or not self.isWindowModified()):  # Modified AND all saved, or was not modified
+            self.mark_dirty(False)
         else:
-            QMessageBox.information(self, "Save", "No files with changes to save."); self.mark_dirty(False)
-
-    def update_cache_from_table(self):
-        if not self.current_paragraph_name or not self.current_paragraph_name in self.paragraphs_cache: return
-
-        paragraph_entry = self.paragraphs_cache.get(self.current_paragraph_name)
-        if not paragraph_entry: return  # Ensure the paragraph exists in cache
-
-        new_sentences = []
-        for row in range(self.sent_table_widget.rowCount()):
-            text_item = self.sent_table_widget.item(row, 0)
-            text = text_item.text() if text_item else ""
-
-            spin_box_widget = self.sent_table_widget.cellWidget(row, 1)
-            delay = spin_box_widget.value() if isinstance(spin_box_widget, QDoubleSpinBox) else 2.0
-            new_sentences.append({"text": text, "delay_seconds": delay})
-
-        paragraph_entry['sentences'] = new_sentences  # Update the cached entry
-        logger.debug(f"Cache updated from table for '{self.current_paragraph_name}'.")
+            QMessageBox.information(self, "Save Status",
+                                    "Some changes might not have been saved. Window remains marked as modified if applicable.")
 
     def update_ui_state(self):
+        """Updates the enabled/disabled state of UI elements."""
         para_selected = self.current_paragraph_name is not None
-        current_row = self.sent_table_widget.currentRow()
-        sent_selected = current_row != -1
 
-        is_last_sentence = False
+        sent_selected_row = -1
         num_sentences = 0
-        if para_selected and sent_selected and self.current_paragraph_name in self.paragraphs_cache:
-            sentences_list = self.paragraphs_cache[self.current_paragraph_name].get("sentences", [])
-            num_sentences = len(sentences_list)
-            if num_sentences > 0 and current_row == num_sentences - 1:
-                is_last_sentence = True
+        if self.sentence_manager:  # Check if sentence_manager is initialized
+            sent_selected_row = self.sentence_manager.get_selected_row()
+            num_sentences = self.sentence_manager.get_current_sentence_count()
+
+        sent_selected = para_selected and sent_selected_row != -1
 
         self.rename_para_button.setEnabled(para_selected)
         self.del_para_button.setEnabled(para_selected)
         self.para_group_box.setEnabled(para_selected)
-        self.add_sent_button.setEnabled(para_selected)
-        self.del_sent_button.setEnabled(para_selected and sent_selected)
 
-        can_split = para_selected and sent_selected and self.sent_edit_text.isEnabled() and len(
-            self.sent_edit_text.toPlainText()) > 0
+        self.add_sent_button.setEnabled(para_selected)
+        self.del_sent_button.setEnabled(sent_selected)
+
+        can_split = sent_selected and self.sent_edit_text.isEnabled() and len(self.sent_edit_text.toPlainText()) > 0
         self.split_sent_button.setEnabled(can_split)
 
-        # Join button enabled if a sentence is selected and it's not the last one.
-        can_join = para_selected and sent_selected and (num_sentences > 1 and not is_last_sentence)
+        is_last_sentence = (sent_selected_row == num_sentences - 1) if num_sentences > 0 and sent_selected else False
+        can_join = sent_selected and (num_sentences > 1 and not is_last_sentence)
         self.join_sent_button.setEnabled(can_join)
 
-        self.sent_edit_text.setEnabled(para_selected and sent_selected)
+        self.sent_edit_text.setEnabled(sent_selected)
         self.save_button.setEnabled(self.isWindowModified())
 
     def prompt_save_changes(self):
-        if not self.isWindowModified(): return True
-        reply = QMessageBox.question(self, 'Unsaved Changes', "Save changes?",
-                                     QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        """Prompts the user to save changes if the window is modified. Returns True if safe to proceed."""
+        if not self.isWindowModified():
+            return True
+        reply = QMessageBox.question(self, 'Unsaved Changes', "There are unsaved changes. Save them now?",
+                                     QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                                     QMessageBox.StandardButton.Save)
         if reply == QMessageBox.StandardButton.Save:
-            self.save_all_changes();
+            self.save_all_changes()
             return not self.isWindowModified()
-        return reply != QMessageBox.StandardButton.Cancel
+        elif reply == QMessageBox.StandardButton.Discard:
+            return True
+        else:  # Cancel
+            return False
 
     def closeEvent(self, event):
+        logger.debug("TextEditorWindow closeEvent triggered.")
         if self.prompt_save_changes():
             event.accept()
+            logger.info("TextEditorWindow closing.")
         else:
             event.ignore()
+            logger.info("TextEditorWindow close cancelled by user.")
