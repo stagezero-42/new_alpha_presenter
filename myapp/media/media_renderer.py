@@ -8,11 +8,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import (
     QPixmap, QPainter, QBrush, QColor, QIcon,
-    QFont, QTextOption, QTextCursor, QTextCharFormat  # QPalette removed, QTextCursor & QTextCharFormat kept
+    QFont, QTextOption, QTextCursor, QTextCharFormat, QTextBlockFormat
 )
 from PySide6.QtCore import Qt, QRectF
 from ..utils.paths import get_media_file_path, get_icon_file_path
-from ..utils.schemas import (  # Import defaults for styling
+from ..utils.schemas import (
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_FONT_COLOR,
     DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
     DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH
@@ -20,7 +20,6 @@ from ..utils.schemas import (  # Import defaults for styling
 
 logger = logging.getLogger(__name__)
 
-# Define some margins for text display
 TEXT_MARGIN_HORIZONTAL = 30
 TEXT_MARGIN_VERTICAL_TOP_BOTTOM = 50
 TEXT_PADDING_CSS = "15px"
@@ -59,7 +58,6 @@ class MediaRenderer(QMainWindow):
 
     def display_images(self, image_filenames):
         logger.debug(f"Displaying images: {image_filenames}")  #
-
         temp_text_item = self.text_item  #
         if temp_text_item and temp_text_item in self.scene.items():  #
             self.scene.removeItem(temp_text_item)  #
@@ -67,7 +65,6 @@ class MediaRenderer(QMainWindow):
         for item in self.scene.items():  #
             if isinstance(item, QGraphicsPixmapItem):  #
                 self.scene.removeItem(item)  #
-
         self.current_layers = image_filenames  #
 
         if not image_filenames:  #
@@ -146,55 +143,56 @@ class MediaRenderer(QMainWindow):
         root_frame_format.setBackground(QBrush(Qt.GlobalColor.transparent))
         text_document.rootFrame().setFrameFormat(root_frame_format)
 
-        # REMOVED FAULTY PALETTE FIX - QTEXTDOCUMENT HAS NO PALETTE()
-        # # --- FIX FOR DOUBLE BACKGROUND (PART 2 - Document Palette Base) ---
-        # doc_palette = text_document.palette()
-        # doc_palette.setBrush(QPalette.ColorRole.Base, QBrush(Qt.GlobalColor.transparent))
-        # text_document.setPalette(doc_palette)
-
         view_rect = self.view.viewport().rect()  #
         if view_rect.isEmpty(): view_rect = self.rect()  #
         if view_rect.isEmpty():  #
             logger.warning("View or window rect is empty, cannot display text properly.")  #
             return  #
 
-        text_item_actual_width = 0  #
+        # This variable will be used for the HTML div's width if fit_to_width is true
         width_style_css = ""  #
+        text_item_layout_width = -1  # Default to auto-width for QGraphicsTextItem
 
         if fit_to_width:  #
-            text_item_actual_width = view_rect.width() - 2 * TEXT_MARGIN_HORIZONTAL  #
-            self.text_item.setTextWidth(text_item_actual_width)  #
-            width_style_css = f"width: {text_item_actual_width}px; box-sizing: border-box;"  #
-        else:
-            self.text_item.setTextWidth(-1)  #
+            calculated_width = view_rect.width() - 2 * TEXT_MARGIN_HORIZONTAL  #
+            text_item_layout_width = calculated_width
+            width_style_css = f"width: {calculated_width}px; box-sizing: border-box;"  #
 
+        # Set HTML content first, so the document is populated
         html_content = (  #
             f"<div style='"
             f"background-color: {bg_color_rgba_css}; "  #
             f"color: {font_color_hex}; "  #
             f"padding: {TEXT_PADDING_CSS}; "  #
             f"border-radius: {TEXT_BORDER_RADIUS_CSS}; "  #
-            f"text-align: {h_align}; "  #
+            # text-align removed from here to rely on QTextOption
             f"{width_style_css}'"  #
             f">{escaped_text_with_br}</div>"  #
         )
         self.text_item.setHtml(html_content)  #
 
         # FIX FOR CHARACTER-LEVEL BACKGROUND ON FIRST LINE (Issue 1)
-        # This attempts to clear any default character background on the first text block.
         first_block = text_document.firstBlock()
         if first_block.isValid():
             cursor = QTextCursor(first_block)
             cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
             cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
-
             char_format_for_bg_clear = QTextCharFormat()
             char_format_for_bg_clear.setBackground(QBrush(Qt.GlobalColor.transparent))
             cursor.mergeCharFormat(char_format_for_bg_clear)
 
-        # FIX FOR HORIZONTAL ALIGNMENT (Issue 2)
-        # Apply QTextOption alignment *after* HTML content is set
-        doc_option = text_document.defaultTextOption()
+        # --- REVISED ALIGNMENT LOGIC ---
+        doc_option = text_document.defaultTextOption()  # Get current options
+
+        if not fit_to_width:
+            # If not fitting to screen, calculate ideal width AFTER HTML is set.
+            # This idealWidth will be used by QGraphicsTextItem for its layout.
+            text_item_layout_width = text_document.idealWidth()
+        # If fit_to_width is true, text_item_layout_width was already set.
+
+        self.text_item.setTextWidth(text_item_layout_width)  # Apply calculated/fixed width
+
+        # Now set alignment options on the document
         if h_align == "left":  #
             doc_option.setAlignment(Qt.AlignmentFlag.AlignLeft)  #
         elif h_align == "center":  #
