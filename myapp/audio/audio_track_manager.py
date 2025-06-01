@@ -127,21 +127,21 @@ class AudioTrackManager:
                 f"Data track_name '{data.get('track_name')}' differs from save name '{track_name}'. Saving with '{track_name}'.")
             data["track_name"] = track_name
 
-        # Ensure file_path in data points to an existing file in media directory
-        # This check is more for integrity; actual file copy handled by import dialog
-        media_file_in_data = data.get("file_path")
+        # Perform schema validation EARLIER
+        is_valid, error = validate_json(data, AUDIO_TRACK_METADATA_SCHEMA, f"Audio Track Metadata for '{track_name}'")
+        if not is_valid:
+            msg = error.message if error else 'Unknown validation error'
+            logger.error(f"Cannot save audio track metadata '{track_name}', data invalid (schema): {msg}")
+            return False
+
+        media_file_in_data = data.get("file_path") # Now we know file_path is a string if schema passed
         if media_file_in_data:
             if not os.path.exists(get_media_file_path(media_file_in_data)):
                 logger.warning(
                     f"Media file '{media_file_in_data}' referenced in metadata for '{track_name}' does not exist in media assets. Saving metadata anyway.")
         else:
-            logger.error(f"Cannot save metadata for '{track_name}': 'file_path' field is missing in data.")
-            return False
-
-        is_valid, error = validate_json(data, AUDIO_TRACK_METADATA_SCHEMA, f"Audio Track Metadata for '{track_name}'")
-        if not is_valid:
-            msg = error.message if error else 'Unknown validation error'
-            logger.error(f"Cannot save audio track metadata '{track_name}', data invalid: {msg}")
+            # This case should ideally be caught by schema validation if file_path is required
+            logger.error(f"Cannot save metadata for '{track_name}': 'file_path' field is missing or invalid in data after schema validation (this should not happen if schema requires it).")
             return False
 
         try:
