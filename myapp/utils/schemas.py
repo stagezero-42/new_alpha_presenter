@@ -113,24 +113,24 @@ PLAYLIST_SCHEMA = {
                                 "enum": ["left", "center", "right"],
                                 "default": DEFAULT_TEXT_ALIGN
                             },
-                            # --- NEW VERTICAL ALIGN PROPERTY ---
                             "text_vertical_align": {
                                 "type": "string",
                                 "enum": ["top", "middle", "bottom"],
                                 "default": DEFAULT_TEXT_VERTICAL_ALIGN
                             },
-                            # --- END NEW VERTICAL ALIGN PROPERTY ---
                             "fit_to_width": {
                                 "type": "boolean",
                                 "default": DEFAULT_FIT_TO_WIDTH
                             }
+                            # Potentially add audio_sync_cues here later if text syncs to audio on this slide
                         },
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
-                        "additionalProperties": False
+                        "additionalProperties": False # Keep this strict for text_overlay
                     }
+                    # Later, you might add an "audio_program_name" field here at the slide level
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True
+                "additionalProperties": True # Allow other keys like audio_program_name at slide level
             },
             "default": []
         }
@@ -156,7 +156,7 @@ SETTINGS_SCHEMA = {
                 "load": {"type": "array", "items": {"type": "string"}},
                 "edit": {"type": "array", "items": {"type": "string"}}
             },
-            "additionalProperties": True
+            "additionalProperties": True # Allow other actions
         },
         "log_level": {
             "type": "string",
@@ -171,6 +171,48 @@ SETTINGS_SCHEMA = {
             "type": "string",
             "default": "alphapresenter.log"
         }
+        # You could add default audio paths here if needed
     },
-    "additionalProperties": True
+    "additionalProperties": True # Allow future top-level settings
 }
+
+# --- NEW AUDIO SCHEMAS ---
+AUDIO_TRACK_METADATA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "track_name": {"type": "string"}, # Unique identifier for this track's metadata
+        "file_path": {"type": "string"},   # Relative path from 'assets/media/' or absolute
+        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0} # Detected full duration
+    },
+    "required": ["track_name", "file_path"],
+    "additionalProperties": False
+}
+
+AUDIO_PROGRAM_TRACK_ENTRY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "track_name": {"type": "string"}, # References a track_name from AUDIO_TRACK_METADATA_SCHEMA
+        "play_order": {"type": "integer", "minimum": 0}, # For ordering within the program
+        "user_start_time_ms": {"type": "integer", "minimum": 0, "default": 0},
+        "user_end_time_ms": {"type": ["integer", "null"], "minimum": 0} # null means play to end of track
+    },
+    "required": ["track_name", "play_order"],
+    "additionalProperties": False
+}
+
+AUDIO_PROGRAM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "program_name": {"type": "string"},
+        "tracks": {
+            "type": "array",
+            "items": AUDIO_PROGRAM_TRACK_ENTRY_SCHEMA,
+            "default": []
+        },
+        "loop_indefinitely": {"type": "boolean", "default": False},
+        "loop_count": {"type": "integer", "minimum": 0, "default": 0} # 0 means no counted loop
+    },
+    "required": ["program_name", "tracks"],
+    "additionalProperties": False
+}
+# --- END NEW AUDIO SCHEMAS ---
