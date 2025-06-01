@@ -87,10 +87,11 @@ def test_validate_track_name(audio_import_dialog):
     assert is_valid is False
     assert "invalid characters" in msg.lower()
 
-
+@patch('PySide6.QtWidgets.QMessageBox.information')
 @patch('PySide6.QtWidgets.QMessageBox.warning')
 @patch('shutil.copy2')
-def test_handle_import_successful(mock_copy, mock_msg_warning, audio_import_dialog, tmp_path):
+def test_handle_import_successful(mock_copy, mock_msg_warning, mock_msg_information, audio_import_dialog,
+                                  tmp_path):  # Add mock_msg_information to args
     source_file = tmp_path / "source_audio.mp3"
     source_file.touch()
 
@@ -98,25 +99,31 @@ def test_handle_import_successful(mock_copy, mock_msg_warning, audio_import_dial
     audio_import_dialog.target_media_filename = "source_audio.mp3"
     audio_import_dialog.track_name_edit.setText("imported_track")
 
-    # Ensure media directory exists for the copy destination
     media_dir_path = tmp_path / "media"
-    media_dir_path.mkdir(exist_ok=True)
+    # The get_media_path in the audio_import_dialog fixture is already patched
+    # to return tmp_path / "media". Ensure this directory actually exists.
+    os.makedirs(media_dir_path, exist_ok=True)
 
     with patch.object(audio_import_dialog, 'accept') as mock_accept:
         audio_import_dialog._handle_import()
 
-        mock_copy.assert_called_once()  # Assuming file is not already in media_path
+        mock_copy.assert_called_once()
         audio_import_dialog.audio_track_manager.detect_audio_duration.assert_called_once()
         audio_import_dialog.audio_track_manager.save_track_metadata.assert_called_once_with(
             "imported_track",
             {
                 "track_name": "imported_track",
                 "file_path": "source_audio.mp3",
-                "detected_duration_ms": 120000  # From mock
+                "detected_duration_ms": 120000
             }
         )
         mock_accept.assert_called_once()
-        mock_msg_warning.assert_not_called()  # No warnings expected
+        mock_msg_warning.assert_not_called()
+        mock_msg_information.assert_called_once_with(  # Optionally assert it was called
+            audio_import_dialog,
+            "Import Successful",
+            "Audio track 'imported_track' metadata created."
+        )
 
 
 @patch('PySide6.QtWidgets.QMessageBox.warning')
