@@ -10,12 +10,13 @@ logger = logging.getLogger(__name__)
 THUMBNAIL_IMAGE_WIDTH = 120
 THUMBNAIL_IMAGE_HEIGHT = 90
 INDICATOR_AREA_HEIGHT = 25
-INDICATOR_ICON_SIZE = 16 # General size for all indicator icons
+INDICATOR_ICON_SIZE = 16
 TOTAL_ICON_WIDTH = THUMBNAIL_IMAGE_WIDTH
+# ***** ADJUST TOTAL HEIGHT FOR POTENTIAL EXTRA ICON ROW or just ensure spacing is enough *****
 TOTAL_ICON_HEIGHT = THUMBNAIL_IMAGE_HEIGHT + INDICATOR_AREA_HEIGHT
 
+
 def _draw_error_placeholder(target_pixmap):
-    # ... (This function remains unchanged) ...
     painter = QPainter(target_pixmap)
     try:
         error_icon_path = get_icon_file_path("image_error.png")
@@ -45,24 +46,21 @@ def _draw_error_placeholder(target_pixmap):
     painter.end()
 
 
-# --- MODIFIED: Added has_text_overlay parameter ---
-def create_composite_thumbnail(slide_data, slide_index, indicator_icons, has_text_overlay=False):
-# --- END MODIFIED ---
-    """
-    Creates a composite QIcon for a slide, including a visual representation
-    and indicators for duration, looping, and text.
-    """
-    logger.debug(f"Creating thumbnail for slide index {slide_index}, text: {has_text_overlay}, data: {slide_data.get('layers', [])[:1]}")
+# ***** MODIFIED: Added has_audio_program parameter *****
+def create_composite_thumbnail(slide_data, slide_index, indicator_icons,
+                               has_text_overlay=False, has_audio_program=False):
+    # ***** END MODIFIED *****
+    logger.debug(
+        f"Creating thumbnail for slide index {slide_index}, text: {has_text_overlay}, audio: {has_audio_program}, data: {slide_data.get('layers', [])[:1]}")
     canvas_pixmap = QPixmap(TOTAL_ICON_WIDTH, TOTAL_ICON_HEIGHT)
-    canvas_pixmap.fill(Qt.GlobalColor.transparent) # Use transparent background
+    canvas_pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(canvas_pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-    # 1. Draw the main image thumbnail
     image_part_pixmap = QPixmap(THUMBNAIL_IMAGE_WIDTH, THUMBNAIL_IMAGE_HEIGHT)
-    image_part_pixmap.fill(Qt.GlobalColor.darkGray)
+    image_part_pixmap.fill(Qt.GlobalColor.darkGray)  # Fallback background for image area
 
     layers = slide_data.get("layers", [])
     image_drawn_successfully = False
@@ -71,23 +69,25 @@ def create_composite_thumbnail(slide_data, slide_index, indicator_icons, has_tex
         first_image_filename = layers[0]
         image_path = get_media_file_path(first_image_filename)
         logger.debug(f"Attempting to load thumbnail image: {image_path}")
-
         if os.path.exists(image_path):
             try:
                 original_pixmap = QPixmap(image_path)
                 if not original_pixmap.isNull():
+                    # Scale to fit within THUMBNAIL_IMAGE_WIDTH x THUMBNAIL_IMAGE_HEIGHT
                     scaled_pixmap = original_pixmap.scaled(
                         THUMBNAIL_IMAGE_WIDTH, THUMBNAIL_IMAGE_HEIGHT,
-                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.AspectRatioMode.KeepAspectRatio,  # Keep aspect ratio
                         Qt.TransformationMode.SmoothTransformation
                     )
+                    # Center the image within the image_part_pixmap
                     x_img = (THUMBNAIL_IMAGE_WIDTH - scaled_pixmap.width()) / 2
                     y_img = (THUMBNAIL_IMAGE_HEIGHT - scaled_pixmap.height()) / 2
-                    img_painter = QPainter(image_part_pixmap)
+
+                    img_painter = QPainter(image_part_pixmap)  # Paint onto the dedicated image part
                     img_painter.drawPixmap(QPoint(int(x_img), int(y_img)), scaled_pixmap)
                     img_painter.end()
                     image_drawn_successfully = True
-                    logger.debug(f"Successfully rendered image {first_image_filename} to thumbnail.")
+                    logger.debug(f"Successfully rendered image {first_image_filename} to thumbnail part.")
                 else:
                     logger.warning(f"QPixmap is null for image path: {image_path}. Using placeholder.")
             except Exception as e:
@@ -100,28 +100,26 @@ def create_composite_thumbnail(slide_data, slide_index, indicator_icons, has_tex
     if not image_drawn_successfully:
         _draw_error_placeholder(image_part_pixmap)
 
-    painter.drawPixmap(0, 0, image_part_pixmap)
+    painter.drawPixmap(0, 0, image_part_pixmap)  # Draw the image part onto the main canvas
 
-    # 2. Draw indicator area
-    indicator_y_start = THUMBNAIL_IMAGE_HEIGHT + 2 # Small gap
+    indicator_y_start = THUMBNAIL_IMAGE_HEIGHT + 2
     current_x = 5
     icon_spacing = 2
     text_spacing = 7
 
     font = painter.font()
-    font.setPointSize(9) # Small font for text indicators
+    font.setPointSize(9)
     painter.setFont(font)
-    painter.setPen(QColor(Qt.GlobalColor.black)) # Text color for indicators
+    painter.setPen(QColor(Qt.GlobalColor.black))
 
-    # Load icons from the provided dict
     pix_slide = indicator_icons.get("slide", QPixmap())
     pix_timer = indicator_icons.get("timer", QPixmap())
     pix_loop = indicator_icons.get("loop", QPixmap())
-    # --- NEW: Load text icon ---
     pix_text_indicator = indicator_icons.get("text", QPixmap())
-    # --- END NEW ---
+    # ***** LOAD AUDIO ICON *****
+    pix_audio_indicator = indicator_icons.get("audio", QPixmap())
+    # ***** END LOAD AUDIO ICON *****
 
-    # Slide number
     if not pix_slide.isNull():
         painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2, pix_slide)
     current_x += INDICATOR_ICON_SIZE + icon_spacing
@@ -129,31 +127,38 @@ def create_composite_thumbnail(slide_data, slide_index, indicator_icons, has_tex
     slide_num_text = str(slide_index + 1)
     fm = painter.fontMetrics()
     text_rect = fm.boundingRect(slide_num_text)
-    # Vertically center text in the indicator area
     text_y = indicator_y_start + (INDICATOR_AREA_HEIGHT - text_rect.height()) // 2 + text_rect.height() - fm.descent()
     painter.drawText(current_x, text_y, slide_num_text)
     current_x += text_rect.width() + text_spacing
 
-    # Duration icon
     duration = slide_data.get("duration", 0)
-    if duration > 0 and not pix_timer.isNull():
+    # Determine if there's any timed content (text timing, audio, or explicit slide duration)
+    text_is_timed = has_text_overlay and slide_data.get("text_overlay", {}).get("sentence_timing_enabled", False)
+    has_any_timing_trigger = duration > 0 or text_is_timed or has_audio_program
+
+    if has_any_timing_trigger and not pix_timer.isNull():  # Show timer if any timing aspect is present
         painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2, pix_timer)
-        current_x += INDICATOR_ICON_SIZE + text_spacing # Space after timer icon
+        current_x += INDICATOR_ICON_SIZE + icon_spacing
 
-    # Loop icon
     loop_target = slide_data.get("loop_to_slide", 0)
-    if loop_target > 0 and duration > 0 and not pix_loop.isNull(): # Loop needs duration
+    if loop_target > 0 and has_any_timing_trigger and not pix_loop.isNull():
         painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2, pix_loop)
-        current_x += INDICATOR_ICON_SIZE + text_spacing # Space after loop icon
+        current_x += INDICATOR_ICON_SIZE + icon_spacing
 
-    # --- NEW: Text overlay indicator icon ---
     if has_text_overlay and not pix_text_indicator.isNull():
-        # Position it to the right, ensure it doesn't overflow if possible
-        # If other icons took up too much space, this might get cramped.
-        # A more advanced layout might dynamically adjust spacing or icon presence.
-        painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2, pix_text_indicator)
-        # current_x += INDICATOR_ICON_SIZE + icon_spacing # If more icons were to follow
-    # --- END NEW ---
+        painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2,
+                           pix_text_indicator)
+        current_x += INDICATOR_ICON_SIZE + icon_spacing
+
+    # ***** DRAW AUDIO INDICATOR ICON *****
+    if has_audio_program and not pix_audio_indicator.isNull():
+        # Check if there's enough space or if it needs to wrap or be smaller
+        # For now, just draw it if there's a little space left
+        if current_x < (TOTAL_ICON_WIDTH - INDICATOR_ICON_SIZE - 5):  # Basic check
+            painter.drawPixmap(current_x, indicator_y_start + (INDICATOR_AREA_HEIGHT - INDICATOR_ICON_SIZE) // 2,
+                               pix_audio_indicator)
+        # current_x += INDICATOR_ICON_SIZE + icon_spacing # Not needed if it's the last icon
+    # ***** END DRAW AUDIO INDICATOR ICON *****
 
     painter.end()
     logger.debug(f"Thumbnail creation complete for slide index {slide_index}.")
@@ -161,10 +166,8 @@ def create_composite_thumbnail(slide_data, slide_index, indicator_icons, has_tex
 
 
 def get_thumbnail_size():
-    """Returns the QSize for the thumbnails."""
     return QSize(TOTAL_ICON_WIDTH, TOTAL_ICON_HEIGHT)
 
 
 def get_list_widget_height():
-    """Returns the recommended height for the QListWidget."""
-    return TOTAL_ICON_HEIGHT + 25 # Add some padding
+    return TOTAL_ICON_HEIGHT + 25
