@@ -4,13 +4,14 @@ import os
 import sys
 import shutil
 from unittest.mock import MagicMock, patch
-from PySide6.QtWidgets import QApplication, QPushButton, QMessageBox
+from PySide6.QtWidgets import QApplication, QPushButton, QMessageBox, \
+    QTabWidget  # Added QTabWidget for potential use if needed in future tests
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from myapp.gui.layer_editor_dialog import LayerEditorDialog
 from myapp.text.paragraph_manager import ParagraphManager
-# Import defaults to ensure test matches them
+from myapp.audio.audio_program_manager import AudioProgramManager  # For future tests if needed
 from myapp.utils.schemas import (
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_FONT_COLOR,
     DEFAULT_BACKGROUND_COLOR, DEFAULT_TEXT_ALIGN,
@@ -32,29 +33,36 @@ def layer_editor(qapp, tmp_path):
     media_dir = tmp_path / "media"
     media_dir.mkdir()
 
-    # current_text_overlay is passed to __init__.
-    # If it's a mock, __init__ will treat it as if no prior overlay data was passed,
-    # thus using defaults for all style fields when load_text_overlay_ui is called.
-    # If it's an empty dict {}, same result.
     initial_text_overlay_for_dialog = {}
+    # ***** MODIFICATION START *****
+    initial_audio_program_name = None
+    # ***** MODIFICATION END *****
 
-    with patch('myapp.utils.paths.get_media_path', return_value=str(media_dir)):
-        with patch('myapp.utils.paths.get_media_file_path', lambda x: os.path.join(str(media_dir), x)):
-            with patch('myapp.utils.paths.get_icon_file_path', return_value="dummy_icon.png"):
-                dialog = LayerEditorDialog(
-                    slide_layers=[],
-                    current_duration=0,
-                    current_loop_target=0,
-                    current_text_overlay=initial_text_overlay_for_dialog,  # Pass empty dict
-                    display_window_instance=MagicMock(),
-                    parent=None
-                )
+    # Mock AudioProgramManager to prevent disk access if not already mocked elsewhere
+    with patch('myapp.gui.layer_editor_dialog.AudioProgramManager') as mock_apm:
+        mock_apm.return_value.list_programs.return_value = ["test_program1", "test_program2"]
+        with patch('myapp.utils.paths.get_media_path', return_value=str(media_dir)):
+            with patch('myapp.utils.paths.get_media_file_path', lambda x: os.path.join(str(media_dir), x)):
+                with patch('myapp.utils.paths.get_icon_file_path', return_value="dummy_icon.png"):
+                    dialog = LayerEditorDialog(
+                        slide_layers=[],
+                        current_duration=0,
+                        current_loop_target=0,
+                        current_text_overlay=initial_text_overlay_for_dialog,
+                        # ***** MODIFICATION START *****
+                        current_audio_program_name=initial_audio_program_name,
+                        # ***** MODIFICATION END *****
+                        display_window_instance=MagicMock(),
+                        parent=None
+                    )
     return dialog
 
 
 def test_layer_editor_creation(layer_editor):
     assert layer_editor is not None
     assert layer_editor.windowTitle() == "Edit Slide Details"
+    assert isinstance(layer_editor.tab_widget, QTabWidget)  # Check if tab widget was created
+    assert layer_editor.tab_widget.count() == 2  # Check for two tabs (Text, Audio)
 
 
 @patch('myapp.gui.layer_editor_dialog.get_themed_open_filenames')
@@ -111,25 +119,23 @@ def test_get_updated_slide_data(layer_editor):
     expected_duration = 10
     expected_loop_target = 2
     expected_paragraph_name = "test_para"
+    # ***** MODIFICATION START *****
+    expected_audio_program_name = "test_program1"
+    # ***** MODIFICATION END *****
 
-    # Calculate the expected alpha after round trip through slider
-    # Default alpha is 150. Slider val = round(9*(1-150/255)) = 4.
-    # Alpha from slider val 4 = 255 - (4*25) = 155.
     expected_calculated_alpha = 155
 
-    # This now needs to include all default style fields
     expected_text_overlay = {
         "paragraph_name": expected_paragraph_name,
         "start_sentence": 1,
         "end_sentence": "all",
         "sentence_timing_enabled": True,
         "auto_advance_slide": False,
-        # Default style values that will be picked up
         "font_family": DEFAULT_FONT_FAMILY,
         "font_size": DEFAULT_FONT_SIZE,
         "font_color": DEFAULT_FONT_COLOR,
         "background_color": DEFAULT_BACKGROUND_COLOR,
-        "background_alpha": expected_calculated_alpha,  # Adjusted for slider conversion
+        "background_alpha": expected_calculated_alpha,
         "text_align": DEFAULT_TEXT_ALIGN,
         "text_vertical_align": DEFAULT_TEXT_VERTICAL_ALIGN,
         "fit_to_width": DEFAULT_FIT_TO_WIDTH
@@ -153,24 +159,34 @@ def test_get_updated_slide_data(layer_editor):
             layer_editor.available_paragraphs.append(expected_paragraph_name)
             layer_editor.paragraph_combo.addItem(expected_paragraph_name, expected_paragraph_name)
 
-        # This will trigger load_text_overlay_ui via update_text_fields_state,
-        # which sets the UI style elements to their defaults because current_text_overlay was initially empty.
-        layer_editor.paragraph_combo.setCurrentText(expected_paragraph_name)
-        mock_load_para.assert_called_with(expected_paragraph_name)
+        # ***** MODIFICATION START *****
+        # Simulate selecting an audio program
+        audio_program_index = layer_editor.audio_program_combo.findData(expected_audio_program_name)
+        if audio_program_index != -1:
+            layer_editor.audio_program_combo.setCurrentIndex(audio_program_index)
+        else:
+            # If test_program1 isn't in the default list from the mock, this test might need adjustment
+            # or the mock_apm in the fixture needs to be more specific. For now, assume it's there.
+            pass
+            # ***** MODIFICATION END *****
 
-        # Set the operational parts of text_overlay
+        layer_editor.paragraph_combo.setCurrentText(expected_paragraph_name)
+        mock_load_para.assert_called_with(
+            expected_paragraph_name)  # This might be called twice if setCurrentText triggers update_text_fields_state which then loads.
+        # Consider if mock_load_para needs to handle multiple calls or if the signal connection causing this is intended.
+        # For this fix, we'll assume current behavior is acceptable.
+
         layer_editor.start_sentence_spinbox.setValue(expected_text_overlay["start_sentence"])
-        layer_editor.end_all_checkbox.setChecked(True)  # for "all"
+        layer_editor.end_all_checkbox.setChecked(True)
         layer_editor.sentence_timing_check.setChecked(expected_text_overlay["sentence_timing_enabled"])
         layer_editor.auto_advance_slide_check.setChecked(expected_text_overlay["auto_advance_slide"])
-
-        # The style UI elements (font_combo, font_size_spinbox etc.) would have been set
-        # to defaults by load_text_overlay_ui when paragraph_combo changed.
-        # get_updated_slide_data will read these current UI values.
 
         updated_data = layer_editor.get_updated_slide_data()
 
     assert updated_data["layers"] == expected_layers
     assert updated_data["duration"] == expected_duration
     assert updated_data["loop_to_slide"] == expected_loop_target
-    assert updated_data["text_overlay"] == expected_text_overlay  # This should now pass
+    assert updated_data["text_overlay"] == expected_text_overlay
+    # ***** MODIFICATION START *****
+    assert updated_data["audio_program_name"] == expected_audio_program_name
+    # ***** MODIFICATION END *****

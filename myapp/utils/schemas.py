@@ -122,15 +122,17 @@ PLAYLIST_SCHEMA = {
                                 "type": "boolean",
                                 "default": DEFAULT_FIT_TO_WIDTH
                             }
-                            # Potentially add audio_sync_cues here later if text syncs to audio on this slide
                         },
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
-                        "additionalProperties": False # Keep this strict for text_overlay
+                        "additionalProperties": False
+                    },
+                    "audio_program_name": { # <-- NEW FIELD FOR AUDIO PROGRAM
+                        "type": ["string", "null"],
+                        "default": None
                     }
-                    # Later, you might add an "audio_program_name" field here at the slide level
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True # Allow other keys like audio_program_name at slide level
+                "additionalProperties": True
             },
             "default": []
         }
@@ -156,7 +158,7 @@ SETTINGS_SCHEMA = {
                 "load": {"type": "array", "items": {"type": "string"}},
                 "edit": {"type": "array", "items": {"type": "string"}}
             },
-            "additionalProperties": True # Allow other actions
+            "additionalProperties": True
         },
         "log_level": {
             "type": "string",
@@ -171,18 +173,16 @@ SETTINGS_SCHEMA = {
             "type": "string",
             "default": "alphapresenter.log"
         }
-        # You could add default audio paths here if needed
     },
-    "additionalProperties": True # Allow future top-level settings
+    "additionalProperties": True
 }
 
-# --- NEW AUDIO SCHEMAS ---
 AUDIO_TRACK_METADATA_SCHEMA = {
     "type": "object",
     "properties": {
-        "track_name": {"type": "string"}, # Unique identifier for this track's metadata
-        "file_path": {"type": "string"},   # Relative path from 'assets/media/' or absolute
-        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0} # Detected full duration
+        "track_name": {"type": "string"},
+        "file_path": {"type": "string"},
+        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0}
     },
     "required": ["track_name", "file_path"],
     "additionalProperties": False
@@ -191,10 +191,10 @@ AUDIO_TRACK_METADATA_SCHEMA = {
 AUDIO_PROGRAM_TRACK_ENTRY_SCHEMA = {
     "type": "object",
     "properties": {
-        "track_name": {"type": "string"}, # References a track_name from AUDIO_TRACK_METADATA_SCHEMA
-        "play_order": {"type": "integer", "minimum": 0}, # For ordering within the program
+        "track_name": {"type": "string"},
+        "play_order": {"type": "integer", "minimum": 0},
         "user_start_time_ms": {"type": "integer", "minimum": 0, "default": 0},
-        "user_end_time_ms": {"type": ["integer", "null"], "minimum": 0} # null means play to end of track
+        "user_end_time_ms": {"type": ["integer", "null"], "minimum": 0}
     },
     "required": ["track_name", "play_order"],
     "additionalProperties": False
@@ -210,9 +210,8 @@ AUDIO_PROGRAM_SCHEMA = {
             "default": []
         },
         "loop_indefinitely": {"type": "boolean", "default": False},
-        "loop_count": {"type": "integer", "minimum": 0, "default": 0} # 0 means no counted loop
+        "loop_count": {"type": "integer", "minimum": 0, "default": 0}
     },
     "required": ["program_name", "tracks"],
     "additionalProperties": False
 }
-# --- END NEW AUDIO SCHEMAS ---

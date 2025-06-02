@@ -52,3 +52,8 @@ resources/: Static assets like icons and default media files.
 docs/: Project documentation.
 
 setup.py: Build configuration for creating executables (optional).
+
+Licensing note: This project uses Qt 6 under the GNU Lesser General Public License v3. A copy of the LGPLv3 can 
+be found at https://www.gnu.org/licenses/lgpl-3.0.en.html
+https://doc.qt.io/qt-6/licensing.html
+https://www.qt.io/qt-licensing

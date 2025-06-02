@@ -6,7 +6,7 @@ from ..utils.paths import get_playlists_path
 from ..utils.schemas import (
     PLAYLIST_SCHEMA, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
     DEFAULT_FONT_COLOR, DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
-    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH  # Added DEFAULT_TEXT_VERTICAL_ALIGN
+    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH
 )
 from ..utils.json_validator import validate_json
 
@@ -22,9 +22,8 @@ def get_default_text_overlay_style():
         "background_color": DEFAULT_BACKGROUND_COLOR,
         "background_alpha": DEFAULT_BACKGROUND_ALPHA,
         "text_align": DEFAULT_TEXT_ALIGN,
-        "text_vertical_align": DEFAULT_TEXT_VERTICAL_ALIGN,  # Added
+        "text_vertical_align": DEFAULT_TEXT_VERTICAL_ALIGN,
         "fit_to_width": DEFAULT_FIT_TO_WIDTH,
-        # Base requirements for text_overlay
         "paragraph_name": "",
         "start_sentence": 1,
         "end_sentence": 1,
@@ -53,7 +52,6 @@ class Playlist:
 
             is_valid, error = validate_json(data, PLAYLIST_SCHEMA, f"Playlist '{os.path.basename(file_path)}'")
             if not is_valid:
-                # Log the schema error details for better debugging
                 schema_error_details = ""
                 if hasattr(error, 'message'): schema_error_details += error.message
                 if hasattr(error, 'path') and error.path: schema_error_details += f" at path: {list(error.path)}"
@@ -71,18 +69,17 @@ class Playlist:
                     "layers": slide_data_from_file.get("layers", []),
                     "duration": slide_data_from_file.get("duration", 0),
                     "loop_to_slide": slide_data_from_file.get("loop_to_slide", 0),
-                    "text_overlay": None
+                    "text_overlay": None,  # Default to None
+                    "audio_program_name": slide_data_from_file.get("audio_program_name", None)
                 }
 
                 text_overlay_data = slide_data_from_file.get("text_overlay")
-                if isinstance(text_overlay_data, dict):
-                    # Ensure all expected keys from default_style_settings are present
-                    # by using default_style_settings as the base and updating with text_overlay_data.
-                    merged_text_overlay = default_style_settings.copy()  # Start with all defaults
-                    merged_text_overlay.update(text_overlay_data)  # Override with actual data
+                if isinstance(text_overlay_data, dict) and text_overlay_data.get(
+                        "paragraph_name"):  # Ensure it's a dict and has content
+                    merged_text_overlay = default_style_settings.copy()
+                    merged_text_overlay.update(text_overlay_data)
                     validated_slide["text_overlay"] = merged_text_overlay
-                elif text_overlay_data is None:
-                    validated_slide["text_overlay"] = None
+                # If text_overlay_data is None or not a valid dict, it remains None as per validated_slide initialization
 
                 for key, value in slide_data_from_file.items():
                     if key not in validated_slide:
@@ -108,14 +105,13 @@ class Playlist:
             slides_to_save = []
             for slide in self.slides:
                 save_slide = slide.copy()
-                if "text_overlay" in save_slide:
-                    overlay = save_slide["text_overlay"]
-                    if overlay is None or not overlay.get("paragraph_name"):
-                        del save_slide["text_overlay"]
-                    else:
-                        # Optionally, remove default values before saving to keep JSON cleaner
-                        # This is more complex and might be skipped for simplicity
-                        pass
+                text_overlay_value = save_slide.get("text_overlay")
+                if not isinstance(text_overlay_value, dict) or not text_overlay_value.get("paragraph_name"):
+                    save_slide["text_overlay"] = None
+
+                if not save_slide.get("audio_program_name"):
+                    save_slide["audio_program_name"] = None
+
                 slides_to_save.append(save_slide)
 
             playlist_data = {"slides": slides_to_save}
@@ -139,33 +135,40 @@ class Playlist:
 
     def add_slide(self, slide_data):
         logger.debug(f"Adding slide: {slide_data}")
-        if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
-            "text_overlay"].get("paragraph_name"):
+
+        text_overlay_value = slide_data.get("text_overlay")
+
+        if isinstance(text_overlay_value, dict) and text_overlay_value.get("paragraph_name"):
             default_style = get_default_text_overlay_style()
-            # Ensure paragraph_name is preserved from input slide_data if it exists
-            para_name = slide_data["text_overlay"].get("paragraph_name", "")
-            merged_overlay = {**default_style, **slide_data["text_overlay"]}
-            merged_overlay["paragraph_name"] = para_name  # Ensure it's not overwritten by default's empty
+            para_name = text_overlay_value.get("paragraph_name", "")
+            merged_overlay = {**default_style, **text_overlay_value}
+            merged_overlay["paragraph_name"] = para_name
             slide_data["text_overlay"] = merged_overlay
-        elif "text_overlay" not in slide_data:
-            slide_data["text_overlay"] = None
+        else:
+            slide_data["text_overlay"] = None  # Handles None, not a dict, or dict without para_name
+
+        if "audio_program_name" not in slide_data or not slide_data["audio_program_name"]:
+            slide_data["audio_program_name"] = None
 
         self.slides.append(slide_data)
 
     def update_slide(self, index, slide_data):
         logger.debug(f"Updating slide at index {index} with: {slide_data}")
         if 0 <= index < len(self.slides):
-            if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
-                "text_overlay"].get("paragraph_name"):
+            text_overlay_value = slide_data.get("text_overlay")
+
+            if isinstance(text_overlay_value, dict) and text_overlay_value.get("paragraph_name"):
                 default_style = get_default_text_overlay_style()
-                para_name = slide_data["text_overlay"].get("paragraph_name", "")  # Preserve current para_name
-                merged_overlay = {**default_style, **slide_data["text_overlay"]}
+                para_name = text_overlay_value.get("paragraph_name", "")
+                merged_overlay = {**default_style, **text_overlay_value}
                 merged_overlay["paragraph_name"] = para_name
                 slide_data["text_overlay"] = merged_overlay
-            elif "text_overlay" in slide_data and slide_data["text_overlay"] is None:
-                pass
-            elif "text_overlay" not in slide_data:
-                slide_data["text_overlay"] = None
+            else:
+                slide_data["text_overlay"] = None  # Handles None, not a dict, or dict without para_name
+
+            if "audio_program_name" not in slide_data or not slide_data["audio_program_name"]:
+                slide_data["audio_program_name"] = None
+
             self.slides[index] = slide_data
         else:
             logger.warning(f"Attempted to update slide at invalid index: {index}")
@@ -190,17 +193,25 @@ class Playlist:
     def set_slides(self, slides_data):
         logger.debug("Setting slides.")
         self.slides = []
-        default_style = get_default_text_overlay_style()
-        for slide in slides_data:
-            if "text_overlay" in slide and isinstance(slide["text_overlay"], dict) and slide["text_overlay"].get(
-                    "paragraph_name"):
-                para_name = slide["text_overlay"].get("paragraph_name", "")  # Preserve current para_name
-                merged_overlay = {**default_style, **slide["text_overlay"]}
-                merged_overlay["paragraph_name"] = para_name
-                slide["text_overlay"] = merged_overlay
-            elif "text_overlay" not in slide or slide["text_overlay"] is None:
-                slide["text_overlay"] = None
-            self.slides.append(slide)
+        default_style = get_default_text_overlay_style()  # Not strictly needed here if add_slide logic is robust
+        for slide_entry in slides_data:  # Make a copy to avoid modifying original list items if they are refs
+            current_slide_data = slide_entry.copy()
+
+            text_overlay_value = current_slide_data.get("text_overlay")
+            if isinstance(text_overlay_value, dict) and text_overlay_value.get("paragraph_name"):
+                para_name = text_overlay_value.get("paragraph_name", "")
+                # Ensure all default style keys are present
+                merged_overlay = get_default_text_overlay_style()  # Start with fresh defaults
+                merged_overlay.update(text_overlay_value)  # Apply overrides from loaded data
+                merged_overlay["paragraph_name"] = para_name  # Re-ensure this specific one
+                current_slide_data["text_overlay"] = merged_overlay
+            else:
+                current_slide_data["text_overlay"] = None
+
+            if "audio_program_name" not in current_slide_data or not current_slide_data["audio_program_name"]:
+                current_slide_data["audio_program_name"] = None
+
+            self.slides.append(current_slide_data)
 
     def get_playlists_directory(self):
         return self.playlists_dir
