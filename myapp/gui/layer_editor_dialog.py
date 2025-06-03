@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton,
     QMessageBox, QAbstractItemView, QListWidgetItem,
     QLabel, QSpinBox, QFrame, QComboBox, QCheckBox, QFormLayout, QGroupBox,
-    QFontComboBox, QColorDialog, QSlider
+    QFontComboBox, QColorDialog, QSlider, QTabWidget, QWidget  # Added QTabWidget, QWidget
 )
 from PySide6.QtGui import QIcon, QFont, QColor, QPalette
 from PySide6.QtCore import Qt
@@ -16,9 +16,7 @@ from ..utils.paths import get_media_path, get_media_file_path, get_icon_file_pat
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 from ..text.paragraph_manager import ParagraphManager
-# --- NEW IMPORT ---
 from ..audio.audio_program_manager import AudioProgramManager
-# --- END NEW IMPORT ---
 from ..utils.schemas import (
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_FONT_COLOR,
     DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
@@ -31,7 +29,7 @@ logger = logging.getLogger(__name__)
 class LayerEditorDialog(QDialog):
     def __init__(self, slide_layers, current_duration, current_loop_target,
                  current_text_overlay,
-                 current_audio_program_name, current_loop_audio_program,  # --- NEW PARAMS ---
+                 current_audio_program_name, current_loop_audio_program,
                  display_window_instance, parent=None):
         super().__init__(parent)
         logger.debug(
@@ -40,11 +38,8 @@ class LayerEditorDialog(QDialog):
         self.slide_layers = list(slide_layers)
         self.current_duration = current_duration
         self.current_loop_target = current_loop_target
-
-        # --- STORE NEW AUDIO PARAMS ---
         self.current_audio_program_name = current_audio_program_name
         self.current_loop_audio_program = current_loop_audio_program
-        # --- END NEW AUDIO PARAMS ---
 
         default_style_base = {
             "font_family": DEFAULT_FONT_FAMILY, "font_size": DEFAULT_FONT_SIZE,
@@ -69,14 +64,12 @@ class LayerEditorDialog(QDialog):
 
         self.media_path = get_media_path()
         self.display_window = display_window_instance
-        self.setMinimumSize(600, 950)  # Increased size slightly more
+        self.setMinimumSize(600, 750)  # Adjusted min height slightly due to tabs
 
         self.paragraph_manager = ParagraphManager()
         self.available_paragraphs = []
-        # --- NEW: Audio Program Manager ---
         self.audio_program_manager = AudioProgramManager()
         self.available_audio_programs = []
-        # --- END NEW ---
 
         try:
             icon_path = get_icon_file_path("edit.png")
@@ -84,17 +77,16 @@ class LayerEditorDialog(QDialog):
         except Exception as e:
             logger.error(f"Failed to set LayerEditorDialog window icon: {e}", exc_info=True)
 
-        self.setup_ui()
+        self.setup_ui()  # This will now include tabs
         self.populate_layers_list()
         self.duration_spinbox.setValue(self.current_duration)
         self.loop_target_spinbox.setValue(self.current_loop_target)
         self.load_text_overlay_ui()
-        self.load_audio_program_ui()  # --- NEW CALL ---
+        self.load_audio_program_ui()
         self.update_text_fields_state()
-        self.update_audio_fields_state()  # --- NEW CALL ---
+        self.update_audio_fields_state()
         logger.debug("LayerEditorDialog initialized.")
 
-    # ... (keep _create_color_button, _update_color_button_stylesheet, _handle_font_color_dialog, _handle_bg_color_dialog) ...
     def _create_color_button(self, initial_color_hex, on_click_method):
         button = QPushButton()
         button.setFixedSize(30, 30)
@@ -119,9 +111,10 @@ class LayerEditorDialog(QDialog):
             self._update_color_button_stylesheet(self.bg_color_button, color.name())
 
     def setup_ui(self):
-        logger.debug("Setting up LayerEditorDialog UI...")
+        logger.debug("Setting up LayerEditorDialog UI with tabs...")
         main_layout = QVBoxLayout(self)
 
+        # Layers Group (remains outside tabs)
         layers_group = QGroupBox("Image Layers")
         layers_layout = QVBoxLayout(layers_group)
         layers_layout.addWidget(QLabel("Image Layers (drag to reorder):"))
@@ -131,27 +124,38 @@ class LayerEditorDialog(QDialog):
         layers_buttons_layout = QHBoxLayout()
         self.add_layer_button = create_button(" Add Image(s)", "add.png", on_click=self.add_layers)
         self.remove_layer_button = create_button(" Remove Selected", "remove.png", on_click=self.remove_layer)
-        layers_buttons_layout.addWidget(self.add_layer_button);
+        layers_buttons_layout.addWidget(self.add_layer_button)
         layers_buttons_layout.addWidget(self.remove_layer_button)
-        layers_layout.addLayout(layers_buttons_layout);
+        layers_layout.addLayout(layers_buttons_layout)
         main_layout.addWidget(layers_group)
 
-        timing_loop_group = QGroupBox("Timing & Looping (for Slide Advance / Text Delay)")
+        # Timing & Looping Group (remains outside tabs, applies to slide itself)
+        timing_loop_group = QGroupBox("Slide Timing & Looping")
         timing_loop_layout = QFormLayout(timing_loop_group)
         self.duration_label = QLabel("Initial Text Delay / Slide Duration (s):")
-        self.duration_spinbox = QSpinBox();
-        self.duration_spinbox.setRange(0, 3600);
+        self.duration_spinbox = QSpinBox()
+        self.duration_spinbox.setRange(0, 3600)
         self.duration_spinbox.setSuffix(" s")
+        self.duration_spinbox.setToolTip(
+            "Duration for slide auto-advance, or initial delay before timed text starts. Audio plays independently.")
         timing_loop_layout.addRow(self.duration_label, self.duration_spinbox)
         loop_label = QLabel("After duration, loop to slide # (1-based, 0 for none):")
-        self.loop_target_spinbox = QSpinBox();
+        self.loop_target_spinbox = QSpinBox()
         self.loop_target_spinbox.setRange(0, 999)
-        timing_loop_layout.addRow(loop_label, self.loop_target_spinbox);
+        timing_loop_layout.addRow(loop_label, self.loop_target_spinbox)
         main_layout.addWidget(timing_loop_group)
 
-        # Text Overlay Group
-        text_overlay_group = QGroupBox("Text Overlay Settings")
-        text_overlay_form_layout = QFormLayout(text_overlay_group)
+        # --- Create TabWidget ---
+        self.details_tab_widget = QTabWidget()
+        main_layout.addWidget(self.details_tab_widget)  # Add tab widget to main layout
+
+        # --- Text Overlay Tab ---
+        text_overlay_tab_content_widget = QWidget()  # Widget to hold the content of the tab
+        text_overlay_tab_layout = QVBoxLayout(text_overlay_tab_content_widget)  # Layout for the tab's content
+
+        self.text_overlay_group = QGroupBox("Text Overlay Settings")  # Keep the group box for title
+        text_overlay_form_layout = QFormLayout(self.text_overlay_group)  # Form layout inside the group
+
         self.paragraph_combo = QComboBox()
         self.paragraph_combo.addItem("(None)", None)
         self.available_paragraphs = sorted(self.paragraph_manager.list_paragraphs())
@@ -159,10 +163,12 @@ class LayerEditorDialog(QDialog):
             self.paragraph_combo.addItem(para_name, para_name)
         self.paragraph_combo.currentIndexChanged.connect(self.update_text_fields_state)
         text_overlay_form_layout.addRow("Paragraph:", self.paragraph_combo)
+
         self.start_sentence_spinbox = QSpinBox();
-        self.start_sentence_spinbox.setRange(1, 999)
+        self.start_sentence_spinbox.setRange(1, 999);
         self.start_sentence_spinbox.valueChanged.connect(self.validate_sentence_range)
         text_overlay_form_layout.addRow("Start Sentence (1-based):", self.start_sentence_spinbox)
+
         end_layout = QHBoxLayout()
         self.end_sentence_spinbox = QSpinBox();
         self.end_sentence_spinbox.setRange(1, 999)
@@ -171,11 +177,13 @@ class LayerEditorDialog(QDialog):
         end_layout.addWidget(self.end_sentence_spinbox);
         end_layout.addWidget(self.end_all_checkbox)
         text_overlay_form_layout.addRow("End Sentence (1-based):", end_layout)
+
         self.sentence_timing_check = QCheckBox("Enable Sentence Timers")
         self.sentence_timing_check.toggled.connect(self.update_text_fields_state)
         text_overlay_form_layout.addRow("", self.sentence_timing_check)
         self.auto_advance_slide_check = QCheckBox("Auto-Advance to Next Slide (after text)")
         text_overlay_form_layout.addRow("", self.auto_advance_slide_check)
+
         text_overlay_form_layout.addRow(QLabel("--- Text Style ---"))
         self.font_combo = QFontComboBox()
         text_overlay_form_layout.addRow("Font Family:", self.font_combo)
@@ -204,34 +212,51 @@ class LayerEditorDialog(QDialog):
         text_overlay_form_layout.addRow("Vert. Position:", self.text_valign_combo)
         self.fit_to_width_check = QCheckBox("Fit Background to Screen Width")
         text_overlay_form_layout.addRow("", self.fit_to_width_check)
-        main_layout.addWidget(text_overlay_group)
 
-        # --- NEW AUDIO PROGRAM GROUP ---
-        audio_program_group = QGroupBox("Audio Program Settings")
-        audio_program_form_layout = QFormLayout(audio_program_group)
+        text_overlay_tab_layout.addWidget(self.text_overlay_group)  # Add group to tab's layout
+        self.details_tab_widget.addTab(text_overlay_tab_content_widget, "Text Overlay")
+
+        # --- Audio Program Tab ---
+        audio_program_tab_content_widget = QWidget()
+        audio_program_tab_layout = QVBoxLayout(audio_program_tab_content_widget)
+
+        self.audio_program_group = QGroupBox("Audio Program Settings")  # Keep group box
+        audio_program_form_layout = QFormLayout(self.audio_program_group)
         self.audio_program_combo = QComboBox()
-        self.audio_program_combo.addItem("(None)", None)  # UserRole is None
+        self.audio_program_combo.addItem("(None)", None)
         self.available_audio_programs = sorted(self.audio_program_manager.list_programs())
         for prog_name in self.available_audio_programs:
-            self.audio_program_combo.addItem(prog_name, prog_name)  # UserRole is program name
+            self.audio_program_combo.addItem(prog_name, prog_name)
         self.audio_program_combo.currentIndexChanged.connect(self.update_audio_fields_state)
         audio_program_form_layout.addRow("Audio Program:", self.audio_program_combo)
         self.loop_audio_checkbox = QCheckBox("Loop Audio Program on this Slide")
+        self.loop_audio_checkbox.setToolTip(
+            "If checked, the selected audio program will repeat as long as this slide is displayed.")
         audio_program_form_layout.addRow("", self.loop_audio_checkbox)
-        main_layout.addWidget(audio_program_group)
-        # --- END NEW AUDIO PROGRAM GROUP ---
 
+        audio_program_tab_layout.addWidget(self.audio_program_group)  # Add group to tab's layout
+        self.details_tab_widget.addTab(audio_program_tab_content_widget, "Audio Program")
+        # --- END ---
+
+        # OK/Cancel buttons (remain at the bottom of the dialog)
         ok_cancel_layout = QHBoxLayout()
         self.preview_button = create_button(" Preview Slide Images", "preview.png",
                                             on_click=self.preview_slide_on_display_from_editor)
         self.ok_button = create_button("OK", on_click=self.accept_changes)
         self.cancel_button = create_button("Cancel", on_click=self.reject)
-        ok_cancel_layout.addWidget(self.preview_button);
+        ok_cancel_layout.addWidget(self.preview_button)
         ok_cancel_layout.addStretch()
-        ok_cancel_layout.addWidget(self.ok_button);
+        ok_cancel_layout.addWidget(self.ok_button)
         ok_cancel_layout.addWidget(self.cancel_button)
-        main_layout.addLayout(ok_cancel_layout)
-        logger.debug("LayerEditorDialog UI setup complete.")
+        main_layout.addLayout(ok_cancel_layout)  # Add to main dialog layout
+
+        logger.debug("LayerEditorDialog UI setup complete with tabs.")
+
+    # load_text_overlay_ui, load_audio_program_ui, update_text_fields_state,
+    # update_audio_fields_state, validate_sentence_range, populate_layers_list,
+    # add_layers, remove_layer, preview_slide_on_display_from_editor,
+    # update_internal_layers_from_widget, accept_changes, get_updated_slide_data
+    # methods remain largely the same as their widgets are just re-parented.
 
     def load_text_overlay_ui(self):
         overlay = self.current_text_overlay
@@ -271,22 +296,19 @@ class LayerEditorDialog(QDialog):
         self.fit_to_width_check.setChecked(overlay.get("fit_to_width", DEFAULT_FIT_TO_WIDTH))
         self.validate_sentence_range()
 
-    # --- NEW METHOD TO LOAD AUDIO UI ---
     def load_audio_program_ui(self):
         logger.debug(
             f"Loading audio UI. Program: '{self.current_audio_program_name}', Loop: {self.current_loop_audio_program}")
         if self.current_audio_program_name and self.current_audio_program_name in self.available_audio_programs:
             self.audio_program_combo.setCurrentText(self.current_audio_program_name)
-        elif self.current_audio_program_name:  # Program name exists in data but not in current list
+        elif self.current_audio_program_name:
             self.audio_program_combo.addItem(f"{self.current_audio_program_name} (Missing!)")
             self.audio_program_combo.setCurrentText(f"{self.current_audio_program_name} (Missing!)")
             logger.warning(f"Audio program '{self.current_audio_program_name}' from playlist not found.")
         else:
-            self.audio_program_combo.setCurrentIndex(0)  # Select "(None)"
+            self.audio_program_combo.setCurrentIndex(0)
 
         self.loop_audio_checkbox.setChecked(self.current_loop_audio_program)
-
-    # --- END NEW METHOD ---
 
     def update_text_fields_state(self):
         selected_paragraph_data = self.paragraph_combo.currentData()
@@ -304,7 +326,6 @@ class LayerEditorDialog(QDialog):
         style_fields_enabled = paragraph_genuinely_selected
         self.font_combo.setEnabled(style_fields_enabled)
         self.font_size_spinbox.setEnabled(style_fields_enabled)
-        # ... (rest of text style fields enablement) ...
         self.font_color_button.setEnabled(style_fields_enabled)
         self.bg_color_button.setEnabled(style_fields_enabled)
         self.bg_alpha_slider.setEnabled(style_fields_enabled)
@@ -314,15 +335,23 @@ class LayerEditorDialog(QDialog):
 
         if paragraph_genuinely_selected:
             self.duration_label.setText("Initial Text Delay (s, 0 for none):")
-            loaded_para = self.paragraph_manager.load_paragraph(selected_paragraph_data)
-            if loaded_para:
-                num_sentences = len(loaded_para.get("sentences", []))
-                self.start_sentence_spinbox.setMaximum(max(1, num_sentences))
-                if not use_all_sentences: self.end_sentence_spinbox.setMaximum(max(1, num_sentences))
-                self.validate_sentence_range()
-        else:
+            try:
+                loaded_para = self.paragraph_manager.load_paragraph(selected_paragraph_data)
+                if loaded_para:
+                    num_sentences = len(loaded_para.get("sentences", []))
+                    self.start_sentence_spinbox.setMaximum(max(1, num_sentences))
+                    if not use_all_sentences: self.end_sentence_spinbox.setMaximum(max(1, num_sentences))
+                    self.validate_sentence_range()
+            except FileNotFoundError:  # Handle case where (Missing!) paragraph is selected
+                self.start_sentence_spinbox.setMaximum(1);
+                self.end_sentence_spinbox.setMaximum(1)
+
+        else:  # No paragraph or (Missing!) selected
             self.duration_label.setText("Slide Duration (s, 0 for manual):")
-            # ... (reset text style fields if no valid paragraph) ...
+            self.start_sentence_spinbox.setMaximum(999);
+            self.end_sentence_spinbox.setMaximum(999)
+            self.start_sentence_spinbox.setValue(1);
+            self.end_sentence_spinbox.setValue(1)
             if not style_fields_enabled:
                 self.font_combo.setCurrentFont(QFont(DEFAULT_FONT_FAMILY))
                 self.font_size_spinbox.setValue(DEFAULT_FONT_SIZE)
@@ -333,16 +362,13 @@ class LayerEditorDialog(QDialog):
                 self.text_valign_combo.setCurrentText(DEFAULT_TEXT_VERTICAL_ALIGN)
                 self.fit_to_width_check.setChecked(DEFAULT_FIT_TO_WIDTH)
 
-    # --- NEW METHOD TO UPDATE AUDIO FIELDS STATE ---
     def update_audio_fields_state(self):
-        selected_audio_program_data = self.audio_program_combo.currentData()  # This is program name or None
+        selected_audio_program_data = self.audio_program_combo.currentData()
         audio_program_genuinely_selected = selected_audio_program_data is not None and \
                                            not str(self.audio_program_combo.currentText()).endswith("(Missing!)")
         self.loop_audio_checkbox.setEnabled(audio_program_genuinely_selected)
         if not audio_program_genuinely_selected:
             self.loop_audio_checkbox.setChecked(False)
-
-    # --- END NEW METHOD ---
 
     def validate_sentence_range(self):
         if not self.end_all_checkbox.isChecked():
@@ -351,7 +377,6 @@ class LayerEditorDialog(QDialog):
             if self.end_sentence_spinbox.value() < start_val:
                 self.end_sentence_spinbox.setValue(start_val)
 
-    # ... (keep populate_layers_list, add_layers, remove_layer, preview_slide_on_display_from_editor, update_internal_layers_from_widget, accept_changes)
     def populate_layers_list(self):
         self.layers_list_widget.clear()
         for layer_path in self.slide_layers:
@@ -396,7 +421,6 @@ class LayerEditorDialog(QDialog):
     def preview_slide_on_display_from_editor(self):
         if not self.display_window: return
         self.update_internal_layers_from_widget()
-        # Clear text for image-only preview, and also clear any audio from display window context
         self.display_window.current_text = None
         if hasattr(self.display_window, 'slide_audio_player') and self.display_window.slide_audio_player:
             self.display_window.slide_audio_player.stop()
@@ -406,7 +430,7 @@ class LayerEditorDialog(QDialog):
         self.slide_layers = [self.layers_list_widget.item(i).text() for i in range(self.layers_list_widget.count())]
 
     def accept_changes(self):
-        self.update_internal_layers_from_widget()
+        self.update_internal_layers_from_widget();
         self.accept()
 
     def get_updated_slide_data(self):
@@ -415,10 +439,8 @@ class LayerEditorDialog(QDialog):
             "duration": self.duration_spinbox.value(),
             "loop_to_slide": self.loop_target_spinbox.value(),
             "text_overlay": None,
-            # --- NEW: Get audio settings ---
             "audio_program_name": None,
             "loop_audio_program": False
-            # --- END NEW ---
         }
         selected_paragraph_data = self.paragraph_combo.currentData()
         if selected_paragraph_data and not str(self.paragraph_combo.currentText()).endswith("(Missing!)"):
@@ -440,12 +462,10 @@ class LayerEditorDialog(QDialog):
                 "fit_to_width": self.fit_to_width_check.isChecked()
             }
 
-        # --- NEW: Populate audio settings in returned data ---
-        selected_audio_program = self.audio_program_combo.currentData()  # This is the program name or None
+        selected_audio_program = self.audio_program_combo.currentData()
         if selected_audio_program and not str(self.audio_program_combo.currentText()).endswith("(Missing!)"):
             data["audio_program_name"] = selected_audio_program
             data["loop_audio_program"] = self.loop_audio_checkbox.isChecked()
-        # --- END NEW ---
 
         logger.debug(f"Returning updated slide data: {data}")
         return data
