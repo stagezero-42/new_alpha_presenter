@@ -126,13 +126,19 @@ PLAYLIST_SCHEMA = {
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
                         "additionalProperties": False
                     },
-                    "audio_program_name": { # <-- NEW FIELD FOR AUDIO PROGRAM
+                    # --- NEW AUDIO FIELDS ---
+                    "audio_program_name": {
                         "type": ["string", "null"],
                         "default": None
+                    },
+                    "loop_audio_program": {
+                        "type": "boolean",
+                        "default": False
                     }
+                    # --- END NEW AUDIO FIELDS ---
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True
+                "additionalProperties": True # Allow other keys at slide level
             },
             "default": []
         }
