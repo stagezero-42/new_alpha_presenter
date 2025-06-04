@@ -2,14 +2,9 @@
 import os
 import json
 import logging
-from mutagen import File as MutagenFile  # For reading audio metadata
-from mutagen.easyid3 import EasyID3
-from mutagen.mp3 import MP3
-from mutagen.wave import WAVE
-from mutagen.flac import FLAC
-from mutagen.oggvorbis import OggVorbis
+import shutil
 
-from ..utils.paths import get_audio_tracks_metadata_path, get_media_file_path
+from ..utils.paths import get_audio_tracks_path, get_media_file_path
 from ..utils.schemas import AUDIO_TRACK_METADATA_SCHEMA
 from ..utils.json_validator import validate_json
 from ..utils.security import is_safe_filename_component
@@ -18,168 +13,147 @@ logger = logging.getLogger(__name__)
 
 
 class AudioTrackManager:
-    """Manages loading, saving, and listing Audio Track Metadata JSON files."""
+    def __init__(self):
+        self.tracks_dir = get_audio_tracks_path()
+        os.makedirs(self.tracks_dir, exist_ok=True)
+        logger.debug(f"AudioTrackManager initialized. Metadata directory: {self.tracks_dir}")
 
-    def __init__(self, audio_tracks_dir=None):
-        self.audio_tracks_dir = audio_tracks_dir if audio_tracks_dir is not None else get_audio_tracks_metadata_path()
-        os.makedirs(self.audio_tracks_dir, exist_ok=True)
-        logger.debug(f"AudioTrackManager initialized. Metadata directory: {self.audio_tracks_dir}")
+    def list_audio_tracks(self):
+        try:
+            return sorted([f.replace(".json", "") for f in os.listdir(self.tracks_dir) if f.endswith(".json")])
+        except OSError as e:
+            logger.error(f"Error listing audio tracks: {e}")
+            return []
 
-    def _get_metadata_file_path(self, track_name):
-        return os.path.join(self.audio_tracks_dir, f"{track_name}.json")
+    def get_track_metadata_path(self, track_name: str) -> str:
+        return os.path.join(self.tracks_dir, f"{track_name}.json")
 
-    def detect_audio_duration(self, media_file_path_abs: str) -> int | None:
-        """
-        Detects the duration of an audio file in milliseconds using mutagen.
-        Returns None if duration cannot be detected or an error occurs.
-        """
-        if not os.path.exists(media_file_path_abs):
-            logger.error(f"Audio file not found for duration detection: {media_file_path_abs}")
+    def load_track_metadata(self, track_name: str) -> dict | None:
+        path = self.get_track_metadata_path(track_name)
+        logger.info(f"Loading audio track metadata: {path}")
+        if not os.path.exists(path):
+            logger.warning(f"Metadata file not found for track: {track_name}")
             return None
         try:
-            audio = MutagenFile(media_file_path_abs, easy=True)
-            if audio is not None and audio.info is not None and hasattr(audio.info, 'length'):
-                duration_seconds = audio.info.length
-                logger.info(f"Detected duration for '{media_file_path_abs}': {duration_seconds:.2f}s")
-                return int(duration_seconds * 1000)  # Convert to milliseconds
-            else:
-                # Fallback for specific types if easy=True didn't work well for info.length
-                # This part might need refinement based on the exact types of audio files used.
-                if media_file_path_abs.lower().endswith(".mp3"):
-                    audio_specific = MP3(media_file_path_abs)
-                    return int(audio_specific.info.length * 1000)
-                elif media_file_path_abs.lower().endswith(".wav"):
-                    audio_specific = WAVE(media_file_path_abs)
-                    return int(audio_specific.info.length * 1000)
-                elif media_file_path_abs.lower().endswith(".flac"):
-                    audio_specific = FLAC(media_file_path_abs)
-                    return int(audio_specific.info.length * 1000)
-                elif media_file_path_abs.lower().endswith((".ogg", ".oga")):
-                    audio_specific = OggVorbis(media_file_path_abs)
-                    return int(audio_specific.info.length * 1000)
-
-                logger.warning(
-                    f"Could not determine duration for '{media_file_path_abs}' using mutagen. Audio info: {audio.info if audio else 'None'}")
-                return None
-        except Exception as e:
-            logger.error(f"Error detecting duration for '{media_file_path_abs}' with mutagen: {e}", exc_info=True)
-            return None
-
-    def load_track_metadata(self, track_name):
-        if not is_safe_filename_component(f"{track_name}.json"):
-            logger.error(f"Attempted to load audio track metadata with unsafe name: {track_name}")
-            return None
-
-        file_path = self._get_metadata_file_path(track_name)
-        logger.info(f"Loading audio track metadata: {file_path}")
-
-        if not os.path.exists(file_path):
-            logger.error(f"Audio track metadata file not found: {file_path}")
-            raise FileNotFoundError(f"Audio track metadata file not found: {file_path}")
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
             is_valid, error = validate_json(data, AUDIO_TRACK_METADATA_SCHEMA, f"Audio Track Metadata '{track_name}'")
             if not is_valid:
-                msg = error.message if error else 'Unknown validation error'
-                logger.error(f"Audio track metadata file '{track_name}' has invalid format: {msg}")
-                raise ValueError(f"Audio track metadata file has invalid format: {msg}")
+                # Log detailed schema error if possible
+                schema_error_details = ""
+                if hasattr(error, 'message'): schema_error_details += error.message
+                if hasattr(error, 'path') and error.path: schema_error_details += f" at path: {list(error.path)}"
+                logger.error(f"Audio track metadata schema validation error for '{track_name}': {schema_error_details}")
+                return None  # Or raise error, depending on desired strictness
 
-            if data.get("track_name") != track_name:
-                logger.warning(
-                    f"Track name '{data.get('track_name')}' in metadata file does not match filename '{track_name}'. Using filename.")
-                data["track_name"] = track_name
-
-            media_file_actual_path = get_media_file_path(data.get("file_path", ""))
-            if not os.path.exists(media_file_actual_path):
-                logger.warning(
-                    f"Actual audio media file '{data.get('file_path')}' not found at '{media_file_actual_path}' for track '{track_name}'. Duration might be stale if file was moved/deleted.")
-            elif data.get("detected_duration_ms") is None:  # If duration was never detected or null
-                logger.info(f"Detected duration is null for {track_name}, attempting to re-detect.")
-                new_duration = self.detect_audio_duration(media_file_actual_path)
-                if new_duration is not None:
-                    data["detected_duration_ms"] = new_duration
-                    # Optionally re-save the metadata file here if duration was updated
-                    # self.save_track_metadata(track_name, data)
-                    logger.info(f"Updated detected duration for {track_name} to {new_duration}ms.")
-                else:
-                    logger.warning(f"Still could not detect duration for {track_name}.")
+            # Ensure essential fields are present with defaults if allowed by schema
+            # For 'detected_duration_ms', schema allows null, so .get() is appropriate
+            data["detected_duration_ms"] = data.get("detected_duration_ms")  # Ensure key exists, even if None
 
             logger.info(f"Successfully loaded audio track metadata: {track_name}")
             return data
-
         except (json.JSONDecodeError, IOError, ValueError) as e:
-            logger.error(f"Failed to load or parse audio track metadata: {file_path}\n{e}", exc_info=True)
-            raise ValueError(f"Failed to load or parse audio track metadata: {file_path}\n{e}")
+            logger.error(f"Failed to load or parse metadata for track '{track_name}': {e}", exc_info=True)
+            return None
 
-    def save_track_metadata(self, track_name, data):
-        if not is_safe_filename_component(f"{track_name}.json"):
-            logger.error(f"Attempted to save audio track metadata with unsafe name: {track_name}")
+    def save_track_metadata(self, track_name: str, metadata: dict) -> bool:
+        if not is_safe_filename_component(track_name):
+            logger.error(f"Attempted to save track metadata with unsafe name: {track_name}")
             return False
-
-        file_path = self._get_metadata_file_path(track_name)
-        logger.info(f"Saving audio track metadata to: {file_path}")
-
-        if data.get("track_name") != track_name:
-            logger.warning(
-                f"Data track_name '{data.get('track_name')}' differs from save name '{track_name}'. Saving with '{track_name}'.")
-            data["track_name"] = track_name
-
-        # Perform schema validation EARLIER
-        is_valid, error = validate_json(data, AUDIO_TRACK_METADATA_SCHEMA, f"Audio Track Metadata for '{track_name}'")
-        if not is_valid:
-            msg = error.message if error else 'Unknown validation error'
-            logger.error(f"Cannot save audio track metadata '{track_name}', data invalid (schema): {msg}")
-            return False
-
-        media_file_in_data = data.get("file_path") # Now we know file_path is a string if schema passed
-        if media_file_in_data:
-            if not os.path.exists(get_media_file_path(media_file_in_data)):
-                logger.warning(
-                    f"Media file '{media_file_in_data}' referenced in metadata for '{track_name}' does not exist in media assets. Saving metadata anyway.")
-        else:
-            # This case should ideally be caught by schema validation if file_path is required
-            logger.error(f"Cannot save metadata for '{track_name}': 'file_path' field is missing or invalid in data after schema validation (this should not happen if schema requires it).")
-            return False
-
+        path = self.get_track_metadata_path(track_name)
+        logger.info(f"Saving audio track metadata for '{track_name}' to {path}")
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4)
-            logger.info(f"Audio track metadata '{track_name}' saved successfully.")
+            # Ensure 'track_name' in metadata matches the filename for consistency
+            metadata["track_name"] = track_name
+
+            is_valid, error = validate_json(metadata, AUDIO_TRACK_METADATA_SCHEMA,
+                                            f"Data for Audio Track '{track_name}' before saving")
+            if not is_valid:
+                schema_error_details = ""
+                if hasattr(error, 'message'): schema_error_details += error.message
+                if hasattr(error, 'path') and error.path: schema_error_details += f" at path: {list(error.path)}"
+                logger.warning(
+                    f"Audio track data validation failed before saving '{track_name}': {schema_error_details}. Attempting to save anyway.")
+                # Depending on policy, you might choose not to save invalid data.
+
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=4)
+            logger.info(f"Successfully saved metadata for track '{track_name}'.")
             return True
         except IOError as e:
-            logger.error(f"Error saving audio track metadata to {file_path}: {e}", exc_info=True)
+            logger.error(f"Error saving metadata for track '{track_name}': {e}", exc_info=True)
             return False
 
-    def list_audio_tracks(self):
-        """Lists all available audio track metadata names."""
+    def delete_track_metadata(self, track_name: str) -> bool:
+        if not is_safe_filename_component(track_name):  # Check before constructing path
+            logger.error(f"Attempted to delete track metadata with unsafe name: {track_name}")
+            return False
+        path = self.get_track_metadata_path(track_name)
+        logger.info(f"Deleting audio track metadata: {path}")
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+                logger.info(f"Successfully deleted metadata for track '{track_name}'.")
+                return True
+            except OSError as e:
+                logger.error(f"Error deleting metadata for track '{track_name}': {e}", exc_info=True)
+                return False
+        else:
+            logger.warning(f"Metadata file not found for deletion: {track_name}")
+            return False  # Or True if not finding it is acceptable for deletion
+
+    def create_metadata_from_file(self, track_name: str, source_audio_file_path: str) -> tuple[dict | None, str | None]:
+        """
+        Creates a metadata JSON file for a new audio track.
+        Copies the source audio file to the media directory.
+        Currently, duration detection is NOT implemented here and will be set to None.
+        """
+        safe_track_name = track_name.strip().replace(" ", "_")
+        if not is_safe_filename_component(safe_track_name):
+            return None, f"Track name '{safe_track_name}' contains invalid characters."
+
+        if not os.path.exists(source_audio_file_path):
+            return None, f"Source audio file not found: {source_audio_file_path}"
+
+        # Copy file to media directory
+        media_filename = os.path.basename(source_audio_file_path)
+        if not is_safe_filename_component(media_filename):  # Double check media filename safety
+            return None, f"Audio filename '{media_filename}' contains invalid characters."
+
+        media_dest_path = get_media_file_path(media_filename)
+
+        # Handle potential filename conflicts in media directory
+        if os.path.exists(media_dest_path) and not os.path.samefile(source_audio_file_path, media_dest_path):
+            base, ext = os.path.splitext(media_filename)
+            i = 1
+            while True:
+                new_media_filename = f"{base}_{i:03d}{ext}"
+                media_dest_path = get_media_file_path(new_media_filename)
+                if not os.path.exists(media_dest_path):
+                    media_filename = new_media_filename  # Update to the unique filename
+                    break
+                i += 1
+
         try:
-            files = [f for f in os.listdir(self.audio_tracks_dir)
-                     if os.path.isfile(os.path.join(self.audio_tracks_dir, f)) and f.lower().endswith('.json')]
-            names = [os.path.splitext(f)[0] for f in files]
-            logger.debug(f"Found audio track metadata: {names}")
-            return names
-        except OSError as e:
-            logger.error(f"Error listing audio track metadata in {self.audio_tracks_dir}: {e}", exc_info=True)
-            return []
+            if not os.path.exists(media_dest_path) or not os.path.samefile(source_audio_file_path, media_dest_path):
+                shutil.copy2(source_audio_file_path, media_dest_path)
+                logger.info(f"Copied audio file to {media_dest_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy audio file '{source_audio_file_path}' to media directory: {e}")
+            return None, f"Could not copy audio file: {e}"
 
-    def delete_track_metadata(self, track_name):
-        if not is_safe_filename_component(f"{track_name}.json"):
-            logger.error(f"Attempted to delete audio track metadata with unsafe name: {track_name}")
-            return False
+        # TODO: Implement actual audio duration detection here
+        # For now, it will be None. The user will need to set it manually or it won't be available.
+        detected_duration_ms = None
 
-        file_path = self._get_metadata_file_path(track_name)
-        logger.warning(f"Attempting to delete audio track metadata: {file_path}")
-        # Note: This does NOT delete the actual audio file from assets/media, only its metadata.
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                logger.info(f"Audio track metadata '{track_name}' deleted.")
-            else:
-                logger.info(f"Audio track metadata '{track_name}' did not exist, nothing to delete.")
-            return True
-        except OSError as e:
-            logger.error(f"Error deleting audio track metadata {file_path}: {e}", exc_info=True)
-            return False
+        metadata = {
+            "track_name": safe_track_name,
+            "file_path": media_filename,  # Store the (potentially modified) filename relative to media dir
+            "detected_duration_ms": detected_duration_ms  # Explicitly None
+        }
+
+        if self.save_track_metadata(safe_track_name, metadata):
+            return metadata, None
+        else:
+            return None, f"Failed to save metadata for track '{safe_track_name}'."

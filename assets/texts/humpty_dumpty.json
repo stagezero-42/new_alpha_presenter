@@ -3,15 +3,21 @@
     "sentences": [
         {
             "text": "Humpty Dumpty sat on a wall, \nHumpty Dumpty \nhad a great fall.",
-            "delay_seconds": 0.0
+            "delay_seconds": 0.0,
+            "voice_over_track_name": null,
+            "voice_over_volume": 1.0
         },
         {
             "text": "All the king's horses and all the king's men",
-            "delay_seconds": 0.0
+            "delay_seconds": 0.0,
+            "voice_over_track_name": null,
+            "voice_over_volume": 1.0
         },
         {
             "text": "Couldn't put Humpty together again. Poor old Humpty Here is a new one",
-            "delay_seconds": 0.0
+            "delay_seconds": 0.0,
+            "voice_over_track_name": null,
+            "voice_over_volume": 1.0
         }
     ]
 }

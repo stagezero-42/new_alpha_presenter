@@ -1,82 +1,126 @@
 # myapp/utils/paths.py
 import os
 import sys
+import logging
 
-def get_project_root():
-    """Gets the base path for the application project root."""
-    if getattr(sys, 'frozen', False):
-        # If running as a bundled executable (e.g., PyInstaller)
-        return os.path.dirname(sys.executable)
-    else:
-        # If running as a script, go up two levels from myapp/utils/
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+logger = logging.getLogger(__name__)
+
+
+def get_app_root_path():
+    """Gets the root directory of the application."""
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 
 def get_assets_path():
-    """Returns the path to the main 'assets' directory."""
-    return os.path.join(get_project_root(), "assets")
+    """Gets the path to the main 'assets' directory."""
+    return os.path.join(get_app_root_path(), "assets")
 
-def get_icons_path():
-    """Returns the path to the 'icons' directory."""
-    return os.path.join(get_assets_path(), "icons")
-
-def get_icon_file_path(icon_name):
-    """Returns the full path for a specific icon."""
-    return os.path.join(get_icons_path(), icon_name)
-
-def get_playlists_path():
-    """Returns the path to the 'playlists' directory."""
-    return os.path.join(get_assets_path(), "playlists")
-
-def get_playlist_file_path(playlist_name):
-    """Returns the full path for a specific playlist file."""
-    return os.path.join(get_playlists_path(), playlist_name)
 
 def get_media_path():
-    """Returns the path to the 'media' directory (for images, videos, actual audio files)."""
+    """Gets the path to the 'media' directory inside 'assets'."""
     return os.path.join(get_assets_path(), "media")
 
-def get_media_file_path(media_name):
-    """Returns the full path for a specific media file in the 'media' directory."""
-    return os.path.join(get_media_path(), media_name)
+
+def get_media_file_path(filename: str) -> str:
+    """Gets the full path to a specific file within the 'media' directory."""
+    return os.path.join(get_media_path(), filename)
+
+
+def get_playlists_path():
+    """Gets the path to the 'playlists' directory inside 'assets'."""
+    return os.path.join(get_assets_path(), "playlists")
+
+
+def get_playlist_file_path(filename: str) -> str:
+    """Gets the full path to a specific file within the 'playlists' directory."""
+    return os.path.join(get_playlists_path(), filename)
+
 
 def get_texts_path():
-    """Returns the path to the 'texts' directory."""
+    """Gets the path to the 'texts' directory inside 'assets'."""
     return os.path.join(get_assets_path(), "texts")
 
-def get_text_file_path(paragraph_name):
-    """Returns the full path for a specific paragraph .json file."""
-    return os.path.join(get_texts_path(), f"{paragraph_name}.json")
 
-def get_settings_file_path():
-    """Returns the path to the 'settings.json' file."""
-    return os.path.join(get_assets_path(), "settings.json")
+def get_text_file_path(filename: str) -> str:
+    """Gets the full path to a specific file within the 'texts' directory."""
+    return os.path.join(get_texts_path(), filename)
 
-# --- NEW AUDIO PATHS ---
-def get_audio_tracks_metadata_path():
-    """Returns the path to the 'audio_tracks' directory (for JSON metadata files)."""
-    return os.path.join(get_assets_path(), "audio_tracks")
 
-def get_audio_track_metadata_file_path(track_metadata_name):
-    """Returns the full path for a specific audio track metadata .json file."""
-    return os.path.join(get_audio_tracks_metadata_path(), f"{track_metadata_name}.json")
+def get_settings_path():
+    """Gets the path to the 'settings' directory inside 'assets'."""
+    return os.path.join(get_assets_path(), "settings")
+
+
+def get_settings_file_path(filename: str = "settings.json") -> str:
+    """Gets the full path to the settings file."""
+    return os.path.join(get_settings_path(), filename)
+
 
 def get_audio_programs_path():
-    """Returns the path to the 'audio_programs' directory (for JSON program files)."""
+    """Gets the path to the 'audio_programs' directory inside 'assets'."""
     return os.path.join(get_assets_path(), "audio_programs")
 
-def get_audio_program_file_path(program_name):
-    """Returns the full path for a specific audio program .json file."""
-    return os.path.join(get_audio_programs_path(), f"{program_name}.json")
-# --- END NEW AUDIO PATHS ---
+
+def get_audio_program_file_path(filename: str) -> str:
+    """Gets the full path to a specific file within the 'audio_programs' directory."""
+    return os.path.join(get_audio_programs_path(), filename)
+
+
+def get_audio_tracks_path():
+    """Gets the path to the 'audio_tracks' (metadata) directory inside 'assets'."""
+    return os.path.join(get_assets_path(), "audio_tracks")
+
+
+def get_audio_track_file_path(filename: str) -> str:
+    """Gets the full path to a specific file within the 'audio_tracks' (metadata) directory."""
+    return os.path.join(get_audio_tracks_path(), filename)
+
+
+def get_icons_path():
+    """Gets the path to the 'icons' directory inside 'assets'."""
+    return os.path.join(get_assets_path(), "icons")
+
+
+def get_log_file_path(filename: str = "alphapresenter.log") -> str:
+    """Gets the full path for the application log file in the app root."""
+    return os.path.join(get_app_root_path(), filename)
+
+
+def get_icon_file_path(icon_filename: str) -> str | None:
+    """
+    Constructs the full path to an icon file within the local 'assets/icons' directory.
+    """
+    local_icon_path = os.path.join(get_icons_path(), icon_filename)
+    if os.path.exists(local_icon_path):
+        return local_icon_path
+
+    # Fallback or more complex system icon lookup could be added here if desired,
+    # but for now, we primarily rely on local assets.
+    logger.warning(f"Icon '{icon_filename}' not found in {get_icons_path()}.")
+    return None
+
 
 def ensure_assets_folders_exist():
-    """Creates all necessary assets subfolders if they don't exist."""
-    os.makedirs(get_assets_path(), exist_ok=True)
-    os.makedirs(get_icons_path(), exist_ok=True)
-    os.makedirs(get_playlists_path(), exist_ok=True)
-    os.makedirs(get_media_path(), exist_ok=True)
-    os.makedirs(get_texts_path(), exist_ok=True)
-    # --- ADDED AUDIO FOLDERS ---
-    os.makedirs(get_audio_tracks_metadata_path(), exist_ok=True)
-    os.makedirs(get_audio_programs_path(), exist_ok=True)
-    # --- END ADDED AUDIO FOLDERS ---
+    """
+    Ensures that all necessary asset subdirectories are created.
+    This should be called once at application startup.
+    """
+    paths_to_ensure = [
+        get_assets_path(),  # Main assets folder
+        get_media_path(),
+        get_playlists_path(),
+        get_texts_path(),
+        get_settings_path(),
+        get_audio_programs_path(),
+        get_audio_tracks_path(),
+        get_icons_path()  # For icons
+    ]
+    for path in paths_to_ensure:
+        try:
+            os.makedirs(path, exist_ok=True)
+            logger.debug(f"Ensured asset folder exists: {path}")
+        except OSError as e:
+            # Log an error but try to continue; essential paths might cause app failure later if not creatable.
+            logger.error(f"Could not create asset folder {path}: {e}", exc_info=True)
+            # Depending on the importance, you might want to raise an exception here
+            # or handle it more gracefully in the main application.

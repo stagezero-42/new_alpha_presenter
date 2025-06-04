@@ -7,15 +7,16 @@ Defines the JSON schemas used for validation in the application.
 # Default text style values
 DEFAULT_FONT_FAMILY = "Arial"
 DEFAULT_FONT_SIZE = 48
-DEFAULT_FONT_COLOR = "#FFFFFF"  # White
-DEFAULT_BACKGROUND_COLOR = "#000000"  # Black
-DEFAULT_BACKGROUND_ALPHA = 150  # ~60% opacity (0-255 scale)
-DEFAULT_TEXT_ALIGN = "center" # horizontal: left, center, right
-DEFAULT_TEXT_VERTICAL_ALIGN = "bottom" # top, middle, bottom
+DEFAULT_FONT_COLOR = "#FFFFFF"
+DEFAULT_BACKGROUND_COLOR = "#000000"
+DEFAULT_BACKGROUND_ALPHA = 150
+DEFAULT_TEXT_ALIGN = "center"
+DEFAULT_TEXT_VERTICAL_ALIGN = "bottom"
 DEFAULT_FIT_TO_WIDTH = False
 
 # Default audio settings
-DEFAULT_AUDIO_PROGRAM_VOLUME = 0.8 # 80% volume
+DEFAULT_AUDIO_PROGRAM_VOLUME = 0.8
+DEFAULT_VOICE_OVER_VOLUME = 1.0 # Voice-overs often default to full volume relative to background
 
 PARAGRAPH_SCHEMA = {
     "type": "object",
@@ -30,10 +31,20 @@ PARAGRAPH_SCHEMA = {
                     "delay_seconds": {
                         "type": "number",
                         "minimum": 0,
-                        "default": 2.0
+                        "default": 2.0 # Default if no VO
+                    },
+                    "voice_over_track_name": { # NEW
+                        "type": ["string", "null"],
+                        "default": None
+                    },
+                    "voice_over_volume": { # NEW
+                        "type": ["number", "null"],
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "default": DEFAULT_VOICE_OVER_VOLUME
                     }
                 },
-                "required": ["text"],
+                "required": ["text"], # delay_seconds will be defaulted or set by VO
                 "additionalProperties": False
             },
             "default": []
@@ -79,7 +90,7 @@ PLAYLIST_SCHEMA = {
                             },
                             "sentence_timing_enabled": {
                                 "type": "boolean",
-                                "default": False
+                                "default": False # This now means text controller uses sentence delays
                             },
                             "auto_advance_slide": {
                                 "type": "boolean",
@@ -147,7 +158,7 @@ PLAYLIST_SCHEMA = {
                         "minimum": 0,
                         "default": 0
                     },
-                    "audio_program_volume": { # NEW
+                    "audio_program_volume": {
                         "type": ["number", "null"],
                         "minimum": 0.0,
                         "maximum": 1.0,

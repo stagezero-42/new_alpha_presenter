@@ -1,16 +1,15 @@
 # tests/test_gui/test_audio_import_dialog.py
 import pytest
 import os
+import sys
 from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QUrl
 
-# Ensure the myapp structure can be imported
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from myapp.gui.audio_import_dialog import AudioImportDialog
-from myapp.audio.audio_track_manager import AudioTrackManager
+from myapp.audio.audio_track_manager import AudioTrackManager  # For spec
 
 
 @pytest.fixture(scope="session")
@@ -24,112 +23,114 @@ def qapp():
 @pytest.fixture
 def mock_audio_track_manager():
     manager = MagicMock(spec=AudioTrackManager)
-    manager.list_audio_tracks.return_value = []
-    manager.save_track_metadata.return_value = True
-    manager.detect_audio_duration.return_value = 120000  # 2 mins
+    manager.list_audio_tracks.return_value = ["existing_track"]
+
+    mock_successful_metadata = {
+        "track_name": "newly_imported_track",
+        "file_path": "newly_imported_file.mp3",
+        "detected_duration_ms": 123000
+    }
+    manager.create_metadata_from_file.return_value = (mock_successful_metadata, None)
     return manager
 
 
 @pytest.fixture
-def audio_import_dialog(qapp, mock_audio_track_manager, tmp_path):
-    # Mock paths used by the dialog
-    with patch('myapp.utils.paths.get_media_path', return_value=str(tmp_path / "media")):
-        with patch('myapp.utils.paths.get_icon_file_path', return_value="dummy_icon.png"):
-            with patch('myapp.gui.widget_helpers.QIcon'):  # Mock QIcon if it causes issues
-                dialog = AudioImportDialog(parent=None, audio_track_manager=mock_audio_track_manager)
-    return dialog
+def dialog(qapp, mock_audio_track_manager):
+    with patch('myapp.gui.widget_helpers.get_icon_file_path', return_value="dummy_icon.png"):
+        # Patch QIcon directly in the audio_import_dialog module for the test
+        with patch('myapp.gui.audio_import_dialog.QIcon', MagicMock()):
+            dlg = AudioImportDialog(parent=None, track_manager=mock_audio_track_manager)
+    return dlg
 
 
-def test_audio_import_dialog_creation(audio_import_dialog):
-    assert audio_import_dialog is not None
-    assert "Import Audio File" in audio_import_dialog.windowTitle()
-    assert audio_import_dialog.track_name_edit is not None
-    assert audio_import_dialog.file_path_edit is not None
+def test_audio_import_dialog_creation(dialog):
+    assert dialog.windowTitle() == "Import Audio Track"
+    assert dialog.track_name_edit.text() == ""
+    assert dialog.file_path_label.text() == "No file selected."
 
 
-@patch('PySide6.QtWidgets.QFileDialog.getOpenFileName')
-def test_browse_file_updates_ui(mock_get_open_filename, audio_import_dialog, tmp_path):
-    dummy_audio_path = str(tmp_path / "test_song.mp3")
-    open(dummy_audio_path, "w").write("dummy")  # create file
-    mock_get_open_filename.return_value = (dummy_audio_path, "Audio Files (*.mp3)")
+@patch('myapp.gui.audio_import_dialog.get_themed_open_filename')
+def test_browse_file_updates_ui(mock_get_open_filename, dialog, tmp_path):
+    test_file_path = tmp_path / "test_audio.mp3"
+    test_file_path.touch()
+    mock_get_open_filename.return_value = str(test_file_path)
 
-    audio_import_dialog._browse_file()
+    dialog.browse_file()
 
-    assert audio_import_dialog.file_path_edit.text() == dummy_audio_path
-    assert audio_import_dialog.track_name_edit.text() == "test_song"  # Assuming default naming logic
-    assert audio_import_dialog.source_audio_file_path == dummy_audio_path
-    assert audio_import_dialog.target_media_filename == "test_song.mp3"
-
-
-@patch('PySide6.QtWidgets.QFileDialog.getOpenFileName', return_value=("", ""))
-def test_browse_file_cancelled(mock_get_open_filename, audio_import_dialog):
-    initial_path = audio_import_dialog.file_path_edit.text()
-    audio_import_dialog._browse_file()
-    assert audio_import_dialog.file_path_edit.text() == initial_path  # Should not change
+    assert dialog.selected_file_path == str(test_file_path)
+    assert dialog.file_path_label.text() == str(test_file_path)
+    assert dialog.track_name_edit.text() == "test_audio"
+    mock_get_open_filename.assert_called_once()
 
 
-def test_validate_track_name(audio_import_dialog):
-    audio_import_dialog.audio_track_manager.list_audio_tracks.return_value = ["existing_track"]
+@patch('myapp.gui.audio_import_dialog.get_themed_open_filename')
+def test_browse_file_cancelled(mock_get_open_filename, dialog):
+    mock_get_open_filename.return_value = ""
+    dialog.browse_file()
+    assert dialog.selected_file_path == ""
+    assert dialog.file_path_label.text() == "No file selected."
+    assert dialog.track_name_edit.text() == ""
 
-    is_valid, msg = audio_import_dialog._validate_track_name("new_track")
-    assert is_valid is True
-    assert msg == "new_track"
 
-    is_valid, msg = audio_import_dialog._validate_track_name(" existing track ")  # Should be handled
-    assert is_valid is False  # Because "existing_track" is in the list
-    assert "already exists" in msg.lower()
+def test_validate_track_name(dialog, mock_audio_track_manager):
+    # Valid name
+    dialog.track_name_edit.setText("new_track")
+    assert dialog.validate_track_name()
 
-    is_valid, msg = audio_import_dialog._validate_track_name("")
-    assert is_valid is False
-    assert "cannot be empty" in msg.lower()
+    # Empty name
+    dialog.track_name_edit.setText("")
+    with patch('PySide6.QtWidgets.QMessageBox.warning') as mock_msgbox:
+        assert not dialog.validate_track_name()
+        mock_msgbox.assert_called_once_with(dialog, "Invalid Name", "Track name cannot be empty.")
 
-    is_valid, msg = audio_import_dialog._validate_track_name("../invalid")
-    assert is_valid is False
-    assert "invalid characters" in msg.lower()
+    # Existing name
+    existing_name_to_test = "existing_track"
+    dialog.track_name_edit.setText(existing_name_to_test)
+    # Ensure the mock list_audio_tracks contains this name for the test
+    mock_audio_track_manager.list_audio_tracks.return_value = [existing_name_to_test]
+    with patch('PySide6.QtWidgets.QMessageBox.warning') as mock_msgbox:
+        assert not dialog.validate_track_name()
+        # Corrected assertion to match the f-string in the actual code
+        expected_message = f"A track with the name '{existing_name_to_test}' already exists."
+        mock_msgbox.assert_called_once_with(dialog, "Name Exists", expected_message)
+
+    # Unsafe name
+    dialog.track_name_edit.setText("../unsafe")
+    # Reset list_audio_tracks for this part of the test if needed, or ensure it doesn't interfere
+    mock_audio_track_manager.list_audio_tracks.return_value = []
+    with patch('myapp.gui.audio_import_dialog.is_safe_filename_component', return_value=False):
+        with patch('PySide6.QtWidgets.QMessageBox.warning') as mock_msgbox:
+            assert not dialog.validate_track_name()
+            # Check that the specific warning for unsafe characters is called
+            mock_msgbox.assert_called_once_with(dialog, "Invalid Name",
+                                                "Track name '../unsafe' contains invalid characters or is a reserved name.")
+
 
 @patch('PySide6.QtWidgets.QMessageBox.information')
-@patch('PySide6.QtWidgets.QMessageBox.warning')
-@patch('shutil.copy2')
-def test_handle_import_successful(mock_copy, mock_msg_warning, mock_msg_information, audio_import_dialog,
-                                  tmp_path):  # Add mock_msg_information to args
-    source_file = tmp_path / "source_audio.mp3"
-    source_file.touch()
+def test_handle_import_successful(mock_msgbox_info, dialog, mock_audio_track_manager, tmp_path):
+    dialog.selected_file_path = str(tmp_path / "audio.mp3")
+    (tmp_path / "audio.mp3").touch()
+    dialog.track_name_edit.setText("my_new_track")
 
-    audio_import_dialog.source_audio_file_path = str(source_file)
-    audio_import_dialog.target_media_filename = "source_audio.mp3"
-    audio_import_dialog.track_name_edit.setText("imported_track")
+    mock_successful_metadata = {
+        "track_name": "my_new_track",
+        "file_path": "audio.mp3",
+        "detected_duration_ms": 60000
+    }
+    mock_audio_track_manager.create_metadata_from_file.return_value = (mock_successful_metadata, None)
 
-    media_dir_path = tmp_path / "media"
-    # The get_media_path in the audio_import_dialog fixture is already patched
-    # to return tmp_path / "media". Ensure this directory actually exists.
-    os.makedirs(media_dir_path, exist_ok=True)
-
-    with patch.object(audio_import_dialog, 'accept') as mock_accept:
-        audio_import_dialog._handle_import()
-
-        mock_copy.assert_called_once()
-        audio_import_dialog.audio_track_manager.detect_audio_duration.assert_called_once()
-        audio_import_dialog.audio_track_manager.save_track_metadata.assert_called_once_with(
-            "imported_track",
-            {
-                "track_name": "imported_track",
-                "file_path": "source_audio.mp3",
-                "detected_duration_ms": 120000
-            }
+    with patch.object(dialog, 'accept') as mock_accept:
+        dialog.handle_import()
+        mock_audio_track_manager.create_metadata_from_file.assert_called_once_with(
+            "my_new_track", str(tmp_path / "audio.mp3")
         )
+        mock_msgbox_info.assert_called_once_with(dialog, "Success", "Track 'my_new_track' imported successfully.")
         mock_accept.assert_called_once()
-        mock_msg_warning.assert_not_called()
-        mock_msg_information.assert_called_once_with(  # Optionally assert it was called
-            audio_import_dialog,
-            "Import Successful",
-            "Audio track 'imported_track' metadata created."
-        )
 
 
-@patch('PySide6.QtWidgets.QMessageBox.warning')
-def test_handle_import_no_file_selected(mock_msg_warning, audio_import_dialog):
-    audio_import_dialog.source_audio_file_path = ""
-    audio_import_dialog._handle_import()
-    mock_msg_warning.assert_called_once_with(audio_import_dialog, "No File", "Please select an audio file to import.")
-
-# Add tests for invalid track name during import, copy error, save metadata error, etc.
+def test_handle_import_no_file_selected(dialog):
+    dialog.selected_file_path = ""
+    dialog.track_name_edit.setText("my_track")
+    with patch('PySide6.QtWidgets.QMessageBox.warning') as mock_msgbox:
+        dialog.handle_import()
+        mock_msgbox.assert_called_once_with(dialog, "Missing Information", "Please select an audio file to import.")
