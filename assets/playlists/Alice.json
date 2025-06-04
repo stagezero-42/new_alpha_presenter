@@ -1,6 +1,30 @@
 {
     "slides": [
         {
+            "audio_program_name": "crickets",
+            "audio_program_volume": 0.4,
+            "duration": 0,
+            "layers": [
+                "Venus_Orangutan.jpg"
+            ],
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "font_family": "Arial",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "bottom",
+                "fit_to_width": false,
+                "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": true,
+                "auto_advance_slide": true
+            }
+        },
+        {
             "audio_program_name": "Alice01",
             "duration": 0,
             "layers": [
