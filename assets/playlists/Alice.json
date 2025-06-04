@@ -1,15 +1,13 @@
 {
     "slides": [
         {
-            "audio_program_name": "crickets",
-            "audio_program_volume": 0.4,
-            "duration": 0,
             "layers": [
                 "Venus_Orangutan.jpg"
             ],
+            "duration": 0,
             "loop_to_slide": 0,
             "text_overlay": {
-                "font_family": "Arial",
+                "font_family": "Liberation Sans",
                 "font_size": 48,
                 "font_color": "#FFFFFF",
                 "background_color": "#000000",
@@ -22,15 +20,64 @@
                 "end_sentence": "all",
                 "sentence_timing_enabled": true,
                 "auto_advance_slide": true
-            }
+            },
+            "audio_program_name": "crickets",
+            "audio_program_volume": 0.05
         },
         {
-            "audio_program_name": "Alice01",
+            "layers": [
+                "Venus_Orangutan.jpg"
+            ],
             "duration": 0,
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "font_family": "Liberation Sans",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "bottom",
+                "fit_to_width": false,
+                "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": true,
+                "auto_advance_slide": true
+            },
+            "audio_program_name": "crickets",
+            "audio_program_volume": 0.3
+        },
+        {
+            "layers": [
+                "Venus_Orangutan.jpg"
+            ],
+            "duration": 0,
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "font_family": "Liberation Sans",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "bottom",
+                "fit_to_width": false,
+                "paragraph_name": "Hunting_of_the_Snark",
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": true,
+                "auto_advance_slide": true
+            },
+            "audio_program_name": "crickets",
+            "audio_program_volume": 0.6
+        },
+        {
             "layers": [
                 "Alice.jpg",
                 "dummy_transparent_partial.png"
             ],
+            "duration": 0,
             "loop_to_slide": 0,
             "text_overlay": {
                 "font_family": "URW Bookman [UKWN]",
@@ -46,14 +93,14 @@
                 "end_sentence": "all",
                 "sentence_timing_enabled": true,
                 "auto_advance_slide": false
-            }
+            },
+            "audio_program_name": "Alice01"
         },
         {
-            "audio_program_name": "Alice01",
-            "duration": 0,
             "layers": [
                 "Alice.jpg"
             ],
+            "duration": 0,
             "loop_to_slide": 0,
             "text_overlay": {
                 "font_family": "URW Bookman [UKWN]",
@@ -69,14 +116,14 @@
                 "end_sentence": "all",
                 "sentence_timing_enabled": true,
                 "auto_advance_slide": false
-            }
+            },
+            "audio_program_name": "Alice01"
         },
         {
-            "audio_program_name": "Alice02",
-            "duration": 0,
             "layers": [
                 "Alice002.jpg"
             ],
+            "duration": 0,
             "loop_to_slide": 0,
             "text_overlay": {
                 "font_family": "Bitstream Charter",
@@ -92,7 +139,8 @@
                 "end_sentence": "all",
                 "sentence_timing_enabled": true,
                 "auto_advance_slide": false
-            }
+            },
+            "audio_program_name": "Alice02"
         }
     ]
 }
