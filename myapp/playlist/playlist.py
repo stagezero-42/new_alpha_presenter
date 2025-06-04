@@ -6,7 +6,8 @@ from ..utils.paths import get_playlists_path
 from ..utils.schemas import (
     PLAYLIST_SCHEMA, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE,
     DEFAULT_FONT_COLOR, DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
-    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH
+    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH,
+    DEFAULT_AUDIO_PROGRAM_VOLUME
 )
 from ..utils.json_validator import validate_json
 
@@ -31,15 +32,15 @@ def get_default_text_overlay_style():
     }
 
 
-# --- NEW: Default slide audio settings ---
 def get_default_slide_audio_settings():
     return {
         "audio_program_name": None,
-        "loop_audio_program": False
+        "loop_audio_program": False,
+        "audio_intro_delay_ms": 0,
+        "audio_outro_duration_ms": 0,
+        "audio_program_volume": DEFAULT_AUDIO_PROGRAM_VOLUME
     }
 
-
-# --- END NEW ---
 
 class Playlist:
     def __init__(self, file_path=None):
@@ -72,21 +73,21 @@ class Playlist:
             loaded_slides = data.get("slides", [])
             self.slides = []
             default_text_style = get_default_text_overlay_style()
-            default_audio_settings = get_default_slide_audio_settings()  # Get audio defaults
+            default_audio_settings = get_default_slide_audio_settings()
 
             for slide_data_from_file in loaded_slides:
+                # Start with all audio defaults
                 validated_slide = {
                     "layers": slide_data_from_file.get("layers", []),
                     "duration": slide_data_from_file.get("duration", 0),
                     "loop_to_slide": slide_data_from_file.get("loop_to_slide", 0),
                     "text_overlay": None,
-                    # --- ADDED: Load audio settings with defaults ---
-                    "audio_program_name": slide_data_from_file.get("audio_program_name",
-                                                                   default_audio_settings["audio_program_name"]),
-                    "loop_audio_program": slide_data_from_file.get("loop_audio_program",
-                                                                   default_audio_settings["loop_audio_program"])
-                    # --- END ADDED ---
+                    **default_audio_settings  # Apply all audio defaults first
                 }
+                # Then update with specifics from file if they exist
+                for key in default_audio_settings.keys():
+                    if key in slide_data_from_file:
+                        validated_slide[key] = slide_data_from_file[key]
 
                 text_overlay_data = slide_data_from_file.get("text_overlay")
                 if isinstance(text_overlay_data, dict):
@@ -96,9 +97,8 @@ class Playlist:
                 elif text_overlay_data is None:
                     validated_slide["text_overlay"] = None
 
-                # Copy any other top-level slide properties
                 for key, value in slide_data_from_file.items():
-                    if key not in validated_slide:
+                    if key not in validated_slide:  # Add any other custom properties
                         validated_slide[key] = value
 
                 self.slides.append(validated_slide)
@@ -125,20 +125,18 @@ class Playlist:
                 if "text_overlay" in save_slide:
                     overlay = save_slide["text_overlay"]
                     if overlay is None or not overlay.get("paragraph_name"):
-                        # Explicitly remove text_overlay if it's None or paragraph_name is missing/empty
-                        if "text_overlay" in save_slide:  # Check if key exists before del
+                        if "text_overlay" in save_slide:
                             del save_slide["text_overlay"]
 
-                # --- ADDED: Clean up default audio settings before saving ---
-                if save_slide.get("audio_program_name") == default_audio_settings["audio_program_name"]:
-                    if "audio_program_name" in save_slide:
-                        del save_slide["audio_program_name"]
-                if save_slide.get("loop_audio_program") == default_audio_settings["loop_audio_program"]:
-                    if "loop_audio_program" in save_slide:  # Only delete if it matches default AND audio_program_name is also default/None
-                        if not save_slide.get(
-                                "audio_program_name"):  # If no audio program, loop_audio_program is irrelevant
-                            del save_slide["loop_audio_program"]
-                # --- END ADDED ---
+                # Clean up default audio settings before saving
+                has_audio_program = bool(save_slide.get("audio_program_name"))
+
+                for key, default_value in default_audio_settings.items():
+                    # Always remove audio settings if no audio program, or if they match default
+                    if not has_audio_program or save_slide.get(key) == default_value:
+                        if key in save_slide:
+                            del save_slide[key]
+
                 slides_to_save.append(save_slide)
 
             playlist_data = {"slides": slides_to_save}
@@ -162,9 +160,8 @@ class Playlist:
 
     def add_slide(self, slide_data):
         logger.debug(f"Adding slide: {slide_data}")
-        default_audio_settings = get_default_slide_audio_settings()  # Get audio defaults
+        default_audio_settings = get_default_slide_audio_settings()
 
-        # Ensure text_overlay structure
         if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
             "text_overlay"].get("paragraph_name"):
             default_style = get_default_text_overlay_style()
@@ -174,22 +171,19 @@ class Playlist:
             slide_data["text_overlay"] = merged_overlay
         elif "text_overlay" not in slide_data or not isinstance(slide_data.get("text_overlay"),
                                                                 dict) or not slide_data.get("text_overlay", {}).get(
-                "paragraph_name"):
+            "paragraph_name"):
             slide_data["text_overlay"] = None
 
-        # --- ADDED: Ensure audio settings default ---
-        if "audio_program_name" not in slide_data:
-            slide_data["audio_program_name"] = default_audio_settings["audio_program_name"]
-        if "loop_audio_program" not in slide_data:
-            slide_data["loop_audio_program"] = default_audio_settings["loop_audio_program"]
-        # --- END ADDED ---
+        for key, default_value in default_audio_settings.items():
+            if key not in slide_data:
+                slide_data[key] = default_value
 
         self.slides.append(slide_data)
 
     def update_slide(self, index, slide_data):
         logger.debug(f"Updating slide at index {index} with: {slide_data}")
         if 0 <= index < len(self.slides):
-            default_audio_settings = get_default_slide_audio_settings()  # Get audio defaults
+            default_audio_settings = get_default_slide_audio_settings()
 
             if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
                 "text_overlay"].get("paragraph_name"):
@@ -199,18 +193,14 @@ class Playlist:
                 merged_overlay["paragraph_name"] = para_name
                 slide_data["text_overlay"] = merged_overlay
             elif "text_overlay" in slide_data and slide_data["text_overlay"] is None:
-                pass  # Keep it None
+                pass
             elif "text_overlay" not in slide_data or not isinstance(slide_data.get("text_overlay"),
                                                                     dict) or not slide_data.get("text_overlay", {}).get(
-                    "paragraph_name"):
+                "paragraph_name"):
                 slide_data["text_overlay"] = None
 
-            # --- ADDED: Ensure audio settings with defaults on update ---
-            if "audio_program_name" not in slide_data:
-                slide_data["audio_program_name"] = default_audio_settings["audio_program_name"]
-            if "loop_audio_program" not in slide_data:
-                slide_data["loop_audio_program"] = default_audio_settings["loop_audio_program"]
-            # --- END ADDED ---
+            for key, default_value in default_audio_settings.items():
+                slide_data.setdefault(key, default_value)  # Ensure all audio keys exist
 
             self.slides[index] = slide_data
         else:
@@ -251,13 +241,36 @@ class Playlist:
                     "paragraph_name"):
                 slide["text_overlay"] = None
 
-            # --- ADDED: Ensure audio settings with defaults ---
-            if "audio_program_name" not in slide:
-                slide["audio_program_name"] = default_audio_settings["audio_program_name"]
-            if "loop_audio_program" not in slide:
-                slide["loop_audio_program"] = default_audio_settings["loop_audio_program"]
-            # --- END ADDED ---
+            # Ensure all audio settings default if not present
+            for key, default_value in default_audio_settings.items():
+                slide.setdefault(key, default_value)
             self.slides.append(slide)
 
     def get_playlists_directory(self):
         return self.playlists_dir
+
+    def insert_slide(self, index, slide_data):
+        """Inserts a slide at a specific index."""
+        logger.debug(f"Inserting slide at index {index}: {slide_data}")
+        default_audio_settings = get_default_slide_audio_settings()
+
+        # Ensure text_overlay structure for the new slide
+        if "text_overlay" in slide_data and isinstance(slide_data["text_overlay"], dict) and slide_data[
+            "text_overlay"].get("paragraph_name"):
+            default_style = get_default_text_overlay_style()
+            para_name = slide_data["text_overlay"].get("paragraph_name", "")
+            merged_overlay = {**default_style, **slide_data["text_overlay"]}
+            merged_overlay["paragraph_name"] = para_name
+            slide_data["text_overlay"] = merged_overlay
+        else:  # Handles None, missing, or invalid text_overlay
+            slide_data["text_overlay"] = None
+
+        # Ensure all audio settings keys are present, defaulting if necessary
+        for key, default_value in default_audio_settings.items():
+            slide_data.setdefault(key, default_value)
+
+        if 0 <= index <= len(self.slides):
+            self.slides.insert(index, slide_data)
+        else:  # Append if index is out of bounds (though typically should be valid)
+            self.slides.append(slide_data)
+            logger.warning(f"Insert slide index {index} out of bounds, appended instead.")

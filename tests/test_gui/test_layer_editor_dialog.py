@@ -5,18 +5,18 @@ import sys
 import shutil
 from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QApplication, QPushButton, QMessageBox, \
-    QTabWidget  # Added QTabWidget for potential use if needed in future tests
+    QTabWidget
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from myapp.gui.layer_editor_dialog import LayerEditorDialog
 from myapp.text.paragraph_manager import ParagraphManager
-from myapp.audio.audio_program_manager import AudioProgramManager  # For future tests if needed
+from myapp.audio.audio_program_manager import AudioProgramManager
 from myapp.utils.schemas import (
     DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_FONT_COLOR,
-    DEFAULT_BACKGROUND_COLOR, DEFAULT_TEXT_ALIGN,
-    DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH
-    # DEFAULT_BACKGROUND_ALPHA will be calculated due to slider conversion
+    DEFAULT_BACKGROUND_COLOR, DEFAULT_BACKGROUND_ALPHA,
+    DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH,
+    DEFAULT_AUDIO_PROGRAM_VOLUME # Import the default volume
 )
 
 
@@ -34,11 +34,9 @@ def layer_editor(qapp, tmp_path):
     media_dir.mkdir()
 
     initial_text_overlay_for_dialog = {}
-    # ***** MODIFICATION START *****
     initial_audio_program_name = None
-    # ***** MODIFICATION END *****
 
-    # Mock AudioProgramManager to prevent disk access if not already mocked elsewhere
+    # Mock AudioProgramManager to prevent disk access
     with patch('myapp.gui.layer_editor_dialog.AudioProgramManager') as mock_apm:
         mock_apm.return_value.list_programs.return_value = ["test_program1", "test_program2"]
         with patch('myapp.utils.paths.get_media_path', return_value=str(media_dir)):
@@ -49,9 +47,11 @@ def layer_editor(qapp, tmp_path):
                         current_duration=0,
                         current_loop_target=0,
                         current_text_overlay=initial_text_overlay_for_dialog,
-                        # ***** MODIFICATION START *****
                         current_audio_program_name=initial_audio_program_name,
-                        # ***** MODIFICATION END *****
+                        current_loop_audio_program=False,  # Provide default for new arg
+                        current_audio_intro_delay_ms=0,    # Provide default for new arg
+                        current_audio_outro_duration_ms=0, # Provide default for new arg
+                        current_audio_program_volume=DEFAULT_AUDIO_PROGRAM_VOLUME, # Provide default
                         display_window_instance=MagicMock(),
                         parent=None
                     )
@@ -61,8 +61,8 @@ def layer_editor(qapp, tmp_path):
 def test_layer_editor_creation(layer_editor):
     assert layer_editor is not None
     assert layer_editor.windowTitle() == "Edit Slide Details"
-    assert isinstance(layer_editor.tab_widget, QTabWidget)  # Check if tab widget was created
-    assert layer_editor.tab_widget.count() == 2  # Check for two tabs (Text, Audio)
+    assert isinstance(layer_editor.details_tab_widget, QTabWidget) # Changed from tab_widget
+    assert layer_editor.details_tab_widget.count() == 2
 
 
 @patch('myapp.gui.layer_editor_dialog.get_themed_open_filenames')
@@ -119,11 +119,14 @@ def test_get_updated_slide_data(layer_editor):
     expected_duration = 10
     expected_loop_target = 2
     expected_paragraph_name = "test_para"
-    # ***** MODIFICATION START *****
     expected_audio_program_name = "test_program1"
-    # ***** MODIFICATION END *****
+    expected_loop_audio_program = True # Example value
+    expected_audio_intro_delay_ms = 500 # Example value
+    expected_audio_outro_duration_ms = 250 # Example value
+    expected_audio_program_volume = 0.75 # Example value
 
-    expected_calculated_alpha = 155
+
+    expected_calculated_alpha = 155 # Based on default slider position
 
     expected_text_overlay = {
         "paragraph_name": expected_paragraph_name,
@@ -159,22 +162,19 @@ def test_get_updated_slide_data(layer_editor):
             layer_editor.available_paragraphs.append(expected_paragraph_name)
             layer_editor.paragraph_combo.addItem(expected_paragraph_name, expected_paragraph_name)
 
-        # ***** MODIFICATION START *****
-        # Simulate selecting an audio program
+        # Simulate selecting an audio program and settings
         audio_program_index = layer_editor.audio_program_combo.findData(expected_audio_program_name)
         if audio_program_index != -1:
             layer_editor.audio_program_combo.setCurrentIndex(audio_program_index)
-        else:
-            # If test_program1 isn't in the default list from the mock, this test might need adjustment
-            # or the mock_apm in the fixture needs to be more specific. For now, assume it's there.
-            pass
-            # ***** MODIFICATION END *****
+        layer_editor.loop_audio_checkbox.setChecked(expected_loop_audio_program)
+        layer_editor.audio_intro_delay_spinbox.setValue(expected_audio_intro_delay_ms)
+        layer_editor.audio_outro_duration_spinbox.setValue(expected_audio_outro_duration_ms)
+        layer_editor.audio_volume_slider.setValue(int(expected_audio_program_volume * 100))
+
 
         layer_editor.paragraph_combo.setCurrentText(expected_paragraph_name)
-        mock_load_para.assert_called_with(
-            expected_paragraph_name)  # This might be called twice if setCurrentText triggers update_text_fields_state which then loads.
-        # Consider if mock_load_para needs to handle multiple calls or if the signal connection causing this is intended.
-        # For this fix, we'll assume current behavior is acceptable.
+        # mock_load_para might be called multiple times due to signal connections
+        # For this test, focus on the final state.
 
         layer_editor.start_sentence_spinbox.setValue(expected_text_overlay["start_sentence"])
         layer_editor.end_all_checkbox.setChecked(True)
@@ -187,6 +187,8 @@ def test_get_updated_slide_data(layer_editor):
     assert updated_data["duration"] == expected_duration
     assert updated_data["loop_to_slide"] == expected_loop_target
     assert updated_data["text_overlay"] == expected_text_overlay
-    # ***** MODIFICATION START *****
     assert updated_data["audio_program_name"] == expected_audio_program_name
-    # ***** MODIFICATION END *****
+    assert updated_data["loop_audio_program"] == expected_loop_audio_program
+    assert updated_data["audio_intro_delay_ms"] == expected_audio_intro_delay_ms
+    assert updated_data["audio_outro_duration_ms"] == expected_audio_outro_duration_ms
+    assert updated_data["audio_program_volume"] == expected_audio_program_volume

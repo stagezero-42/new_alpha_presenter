@@ -1,6 +1,7 @@
 # myapp/gui/playlist_editor.py
 import os
 import logging
+import copy  # For deepcopy
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QMessageBox, QListWidget, QListWidgetItem, QAbstractItemView
@@ -14,7 +15,7 @@ from .settings_window import SettingsWindow
 from .text_editor_window import TextEditorWindow
 from .audio_program_editor_window import AudioProgramEditorWindow
 
-from ..playlist.playlist import Playlist
+from ..playlist.playlist import Playlist, get_default_slide_audio_settings  # Import getter
 from ..utils.paths import get_playlists_path, get_icon_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlaylistEditorWindow(QMainWindow):
-    playlist_saved_signal = Signal(str)  # Emitted with playlist path on save/load
+    playlist_saved_signal = Signal(str)
 
     def __init__(self, display_window_instance, playlist_obj, parent=None):
         super().__init__(parent)
@@ -31,7 +32,7 @@ class PlaylistEditorWindow(QMainWindow):
             f"Initializing PlaylistEditorWindow. Current playlist has {len(playlist_obj.get_slides())} slides.")
         self.base_title = "Playlist Editor"
         self.display_window = display_window_instance
-        self.playlist = playlist_obj  # This is a Playlist object
+        self.playlist = playlist_obj
         self.playlists_base_dir = get_playlists_path()
 
         self.setWindowTitle(f"{self.base_title} [*]")
@@ -57,7 +58,6 @@ class PlaylistEditorWindow(QMainWindow):
         logger.debug("PlaylistEditorWindow initialized.")
 
     def setup_ui(self):
-        # ... (toolbar setup remains the same) ...
         logger.debug("Setting up PlaylistEditorWindow UI...")
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
@@ -88,6 +88,8 @@ class PlaylistEditorWindow(QMainWindow):
 
         slide_controls_layout = QHBoxLayout()
         self.add_slide_button = create_button(" Add Slide", "add.png", "Add a new slide", self.add_slide)
+        self.duplicate_slide_button = create_button(" Duplicate Slide", "duplicate.png",  # NEW BUTTON
+                                                    "Duplicate selected slide", self.duplicate_selected_slide)
         self.edit_slide_button = create_button(" Edit Slide Details", "edit.png", "Edit selected slide",
                                                self.edit_selected_slide_layers)
         self.edit_text_button = create_button(" Edit Text Paragraphs", "text.png", "Open Text Editor",
@@ -100,6 +102,7 @@ class PlaylistEditorWindow(QMainWindow):
                                                  self.remove_slide)
 
         slide_controls_layout.addWidget(self.add_slide_button)
+        slide_controls_layout.addWidget(self.duplicate_slide_button)  # NEW
         slide_controls_layout.addWidget(self.edit_slide_button)
         slide_controls_layout.addWidget(self.edit_text_button)
         slide_controls_layout.addWidget(self.edit_audio_programs_button)
@@ -112,13 +115,12 @@ class PlaylistEditorWindow(QMainWindow):
 
     def edit_slide_layers_dialog(self, item):
         row = self.playlist_list.row(item)
-        slide_data = self.playlist.get_slide(row)  # Get current data from Playlist object
+        slide_data = self.playlist.get_slide(row)
         if not slide_data:
             logger.error(f"Could not retrieve slide data for row {row} during edit.")
             return
 
         logger.info(f"Opening layer/details editor for slide at index {row}.")
-        # --- PASS AUDIO DATA TO DIALOG ---
         editor = LayerEditorDialog(
             slide_layers=slide_data.get("layers", []),
             current_duration=slide_data.get("duration", 0),
@@ -126,22 +128,26 @@ class PlaylistEditorWindow(QMainWindow):
             current_text_overlay=slide_data.get("text_overlay"),
             current_audio_program_name=slide_data.get("audio_program_name"),
             current_loop_audio_program=slide_data.get("loop_audio_program", False),
+            current_audio_intro_delay_ms=slide_data.get("audio_intro_delay_ms", 0),
+            current_audio_outro_duration_ms=slide_data.get("audio_outro_duration_ms", 0),
+            current_audio_program_volume=slide_data.get("audio_program_volume",
+                                                        get_default_slide_audio_settings()["audio_program_volume"]),
+            # NEW
             display_window_instance=self.display_window,
             parent=self
         )
-        # --- END PASS AUDIO DATA ---
 
         if editor.exec():
             logger.info(f"Layer/details editor for slide {row} accepted.")
             updated_data_from_dialog = editor.get_updated_slide_data()
-
-            # Create a dictionary of changes for logging/comparison
             changes = {}
-            for key in ["layers", "duration", "loop_to_slide", "text_overlay", "audio_program_name",
-                        "loop_audio_program"]:
+            all_keys = ["layers", "duration", "loop_to_slide", "text_overlay",
+                        "audio_program_name", "loop_audio_program",
+                        "audio_intro_delay_ms", "audio_outro_duration_ms",
+                        "audio_program_volume"]  # NEW
+            for key in all_keys:
                 old_val = slide_data.get(key)
                 new_val = updated_data_from_dialog.get(key)
-                # Handle text_overlay specially for comparison if it can be None vs {}
                 if key == "text_overlay":
                     old_val = old_val if isinstance(old_val, dict) else {}
                     new_val = new_val if isinstance(new_val, dict) else {}
@@ -150,19 +156,16 @@ class PlaylistEditorWindow(QMainWindow):
 
             if changes:
                 logger.info(f"Slide {row} data changed. Updating playlist. Changes: {changes}")
-                # Update the slide_data dictionary directly with all new values
                 slide_data.update(updated_data_from_dialog)
-                self.playlist.update_slide(row, slide_data)  # Pass the modified slide_data
+                self.playlist.update_slide(row, slide_data)
                 self.mark_dirty()
             else:
                 logger.info(f"Layer/details editor for slide {row} closed with no changes.")
-
-            self.populate_list()  # Repopulate to reflect any changes
-            self.playlist_list.setCurrentRow(row)  # Re-select the edited row
+            self.populate_list()
+            self.playlist_list.setCurrentRow(row)
         else:
             logger.info(f"Layer/details editor for slide {row} cancelled.")
 
-    # ... (open_text_editor, open_audio_program_editor, open_settings_window, mark_dirty, update_title remain the same) ...
     def open_text_editor(self):
         logger.info("Opening text editor window...")
         if self.text_editor_window_instance is None or not self.text_editor_window_instance.isVisible():
@@ -214,37 +217,41 @@ class PlaylistEditorWindow(QMainWindow):
             duration = slide.get("duration", 0)
             loop_target = slide.get("loop_to_slide", 0)
             text_info = slide.get("text_overlay")
-            # --- NEW: Get audio info ---
+
             audio_program_name = slide.get("audio_program_name")
             loop_audio = slide.get("loop_audio_program", False)
-            # --- END NEW ---
+            audio_intro_ms = slide.get("audio_intro_delay_ms", 0)
+            audio_outro_ms = slide.get("audio_outro_duration_ms", 0)
+            audio_volume = slide.get("audio_program_volume", get_default_slide_audio_settings()["audio_program_volume"])
 
             base_item_text = f"Slide {i + 1}"
             details = []
 
             if audio_program_name:
                 audio_detail = f"Audio: {audio_program_name}"
-                if loop_audio:
-                    audio_detail += " (Loop)"
+                if loop_audio: audio_detail += " (Loop)"
+                if audio_intro_ms > 0: audio_detail += f", Intro: {audio_intro_ms / 1000.0:.1f}s"
+                if audio_outro_ms > 0: audio_detail += f", Outro: {audio_outro_ms / 1000.0:.1f}s"
+                if audio_volume != get_default_slide_audio_settings()[
+                    "audio_program_volume"]:  # Only show if not default
+                    audio_detail += f", Vol: {int(audio_volume * 100)}%"
                 details.append(audio_detail)
 
             if text_info and text_info.get("paragraph_name"):
                 text_detail = f"Txt: {text_info['paragraph_name']}"
                 if text_info.get("sentence_timing_enabled", False):
                     text_detail += f" (Timed, Delay: {duration}s)"
-                elif duration > 0:  # Text exists, not timed, but slide has initial delay for text
+                elif duration > 0:
                     text_detail += f" (Delay: {duration}s)"
-                else:  # Text exists, not timed, no initial delay
+                else:
                     text_detail += " (Manual Text)"
                 details.append(text_detail)
-            elif not audio_program_name:  # Only show slide duration if no audio and no text
-                if duration > 0:
-                    details.append(f"Duration: {duration}s")
-                else:
-                    details.append("Manual Advance")
+            elif not audio_program_name and duration > 0:
+                details.append(f"Duration: {duration}s")
+            elif not audio_program_name and not (text_info and text_info.get("paragraph_name")):
+                details.append("Manual Advance")
 
-            if loop_target > 0:  # Slide loop target
-                # A slide loop is typically only meaningful if there's a duration (either slide duration or text timing implies some duration)
+            if loop_target > 0:
                 is_slide_timed_for_loop = duration > 0 or (text_info and text_info.get("sentence_timing_enabled"))
                 if is_slide_timed_for_loop:
                     details.append(f"Loop Slide to S{loop_target}")
@@ -253,7 +260,7 @@ class PlaylistEditorWindow(QMainWindow):
 
             item_text = f"{base_item_text} ({', '.join(details)}): {layers_str if layers_str else '[Empty Slide]'}"
             list_item = QListWidgetItem(item_text)
-            list_item.setData(Qt.ItemDataRole.UserRole, slide)  # Store the slide dict itself
+            list_item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(list_item)
 
         if 0 <= current_row < self.playlist_list.count():
@@ -270,7 +277,7 @@ class PlaylistEditorWindow(QMainWindow):
         current_playlist_slides = self.playlist.get_slides()
 
         if self.playlist_list.count() != len(current_playlist_slides):
-            changed_order = True  # Count mismatch implies change
+            changed_order = True
 
         for i in range(self.playlist_list.count()):
             item = self.playlist_list.item(i)
@@ -280,22 +287,20 @@ class PlaylistEditorWindow(QMainWindow):
                 if not changed_order and (
                         i >= len(current_playlist_slides) or current_playlist_slides[i] != slide_data):
                     changed_order = True
-            else:  # Should not happen if list is populated correctly
+            else:
                 logger.error(f"Missing item at index {i} in playlist_list during reorder.")
-                changed_order = True  # Consider it a change to be safe
+                changed_order = True;
                 break
 
         if changed_order:
             self.playlist.set_slides(new_slides)
             self.mark_dirty()
             logger.debug("Internal playlist order updated.")
-        # No need to repopulate here if only order changed, but other ops might require it.
-        # self.populate_list() # If data integrity might be affected beyond order
 
     def new_playlist(self):
         logger.info("New playlist action triggered.")
         if self.isWindowModified():
-            reply = self.prompt_save_changes()  # Uses QMessageBox.StandardButton enums
+            reply = self.prompt_save_changes()
             if reply == QMessageBox.StandardButton.Cancel:
                 logger.info("New playlist action cancelled by user at save prompt.")
                 return
@@ -308,12 +313,15 @@ class PlaylistEditorWindow(QMainWindow):
     def add_slide(self):
         logger.info("Add slide action triggered.")
         self.update_playlist_from_list_order()
-        # --- NEW: Default audio for new slide ---
+        default_audio = get_default_slide_audio_settings()
         new_slide_data = {
             "layers": [], "duration": 0, "loop_to_slide": 0, "text_overlay": None,
-            "audio_program_name": None, "loop_audio_program": False
+            "audio_program_name": default_audio["audio_program_name"],
+            "loop_audio_program": default_audio["loop_audio_program"],
+            "audio_intro_delay_ms": default_audio["audio_intro_delay_ms"],
+            "audio_outro_duration_ms": default_audio["audio_outro_duration_ms"],
+            "audio_program_volume": default_audio["audio_program_volume"]
         }
-        # --- END NEW ---
         self.playlist.add_slide(new_slide_data)
         self.populate_list()
         new_slide_index = self.playlist_list.count() - 1
@@ -322,7 +330,32 @@ class PlaylistEditorWindow(QMainWindow):
         logger.info(f"New slide added at index {new_slide_index}. Opening editor.")
         self.edit_selected_slide_layers()
 
-    # ... (remove_slide, edit_selected_slide_layers, preview_selected_slide, load_playlist_dialog, save_playlist, save_playlist_as, prompt_save_changes, closeEvent remain largely the same but ensure they use self.playlist which is a Playlist object) ...
+    def duplicate_selected_slide(self):
+        logger.info("Duplicate slide action triggered.")
+        current_item = self.playlist_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Duplicate Slide", "Please select a slide to duplicate.")
+            return
+
+        row = self.playlist_list.row(current_item)
+        original_slide_data = self.playlist.get_slide(row)
+        if not original_slide_data:
+            logger.error(f"Could not get data for slide at row {row} to duplicate.")
+            return
+
+        # Create a deep copy to ensure nested structures like text_overlay are also copied
+        duplicated_slide_data = copy.deepcopy(original_slide_data)
+
+        self.update_playlist_from_list_order()  # Ensure current order is reflected in model
+
+        insert_index = row + 1
+        self.playlist.insert_slide(insert_index, duplicated_slide_data)  # Uses new method in Playlist
+
+        self.populate_list()
+        self.playlist_list.setCurrentRow(insert_index)  # Select the new duplicate
+        self.mark_dirty()
+        logger.info(f"Slide at index {row} duplicated to index {insert_index}.")
+
     def remove_slide(self):
         logger.debug("Remove slide action triggered.")
         current_item = self.playlist_list.currentItem()
@@ -330,22 +363,11 @@ class PlaylistEditorWindow(QMainWindow):
             logger.warning("Remove slide called but no item selected.")
             return
         row = self.playlist_list.row(current_item)
-
-        # Order of operations:
-        # 1. Remove from the QListWidget view
         self.playlist_list.takeItem(row)
-        # 2. Update the internal playlist model based on the new view order
-        #    This also handles marking as dirty if the order or content changes.
         self.update_playlist_from_list_order()
-        # 3. Repopulate to ensure consistency if update_playlist_from_list_order doesn't do it fully
-        #    (or if there are subtle data changes not caught by simple reordering logic)
-        # self.populate_list() # update_playlist_from_list_order should handle marking dirty. This might be redundant unless data changes.
-        # For safety and to ensure list reflects true model state after any complex update:
-        self.populate_list()  # Re-sync list from model
-        self.mark_dirty()  # Ensure dirty flag is set from remove operation itself
-
+        self.populate_list()
+        self.mark_dirty()
         logger.info(f"Slide at index {row} removed.")
-        # If list is not empty, select a new item
         if self.playlist_list.count() > 0:
             new_selection_row = min(row, self.playlist_list.count() - 1)
             self.playlist_list.setCurrentRow(new_selection_row)
@@ -375,7 +397,6 @@ class PlaylistEditorWindow(QMainWindow):
             layers_to_preview = slide_data.get("layers", [])
             logger.info(f"Previewing slide at index {row} with layers: {layers_to_preview}")
             self.display_window.current_text = None
-            # Stop any slide-specific audio from ControlWindow's player during preview
             if hasattr(self.display_window, 'slide_audio_player') and self.display_window.slide_audio_player:
                 self.display_window.slide_audio_player.stop()
             self.display_window.display_images(layers_to_preview)
@@ -384,14 +405,15 @@ class PlaylistEditorWindow(QMainWindow):
             if slide_data.get("text_overlay"):
                 preview_notes.append("Text overlay appears when slide is played via Control Window.")
             if slide_data.get("audio_program_name"):
-                preview_notes.append("Audio program plays when slide is run via Control Window.")
+                preview_notes.append(
+                    "Audio program (with any intro/outro/volume) plays when slide is run via Control Window.")
             QMessageBox.information(self, "Preview Note", "\n".join(preview_notes))
 
     def load_playlist_dialog(self):
         logger.info("Load playlist dialog action triggered.")
         if self.isWindowModified():
             reply = self.prompt_save_changes()
-            if reply == QMessageBox.StandardButton.Cancel:  # Check for actual cancel
+            if reply == QMessageBox.StandardButton.Cancel:
                 logger.info("Load playlist action cancelled by user at save prompt.")
                 return
 
@@ -421,7 +443,6 @@ class PlaylistEditorWindow(QMainWindow):
             logger.info(f"Saving playlist to: {self.playlist.file_path}")
             if self.playlist.save(self.playlist.file_path):
                 self.mark_dirty(False)
-                # QMessageBox.information(self, "Save Success", "Playlist saved.") # Optional, can be verbose
                 self.playlist_saved_signal.emit(self.playlist.file_path)
                 logger.info("Playlist saved successfully.")
                 return True
@@ -479,17 +500,16 @@ class PlaylistEditorWindow(QMainWindow):
                                      "There are unsaved changes in the playlist.\nSave them now?",
                                      QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                                      QMessageBox.StandardButton.Save)
-
         if reply == QMessageBox.StandardButton.Save:
             logger.info("User chose to Save changes.")
             if self.save_playlist():
                 return QMessageBox.StandardButton.Save
-            else:  # Save failed
-                return QMessageBox.StandardButton.Cancel  # Treat failed save as a cancel of the close op
+            else:
+                return QMessageBox.StandardButton.Cancel
         elif reply == QMessageBox.StandardButton.Discard:
             logger.info("User chose to Discard changes.")
             return QMessageBox.StandardButton.Discard
-        else:  # Cancel
+        else:
             logger.info("User chose to Cancel operation.")
             return QMessageBox.StandardButton.Cancel
 

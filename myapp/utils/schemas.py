@@ -14,6 +14,9 @@ DEFAULT_TEXT_ALIGN = "center" # horizontal: left, center, right
 DEFAULT_TEXT_VERTICAL_ALIGN = "bottom" # top, middle, bottom
 DEFAULT_FIT_TO_WIDTH = False
 
+# Default audio settings
+DEFAULT_AUDIO_PROGRAM_VOLUME = 0.8 # 80% volume
+
 PARAGRAPH_SCHEMA = {
     "type": "object",
     "properties": {
@@ -108,7 +111,7 @@ PLAYLIST_SCHEMA = {
                                 "maximum": 255,
                                 "default": DEFAULT_BACKGROUND_ALPHA
                             },
-                            "text_align": { # Horizontal alignment
+                            "text_align": {
                                 "type": "string",
                                 "enum": ["left", "center", "right"],
                                 "default": DEFAULT_TEXT_ALIGN
@@ -126,7 +129,6 @@ PLAYLIST_SCHEMA = {
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
                         "additionalProperties": False
                     },
-                    # --- NEW AUDIO FIELDS ---
                     "audio_program_name": {
                         "type": ["string", "null"],
                         "default": None
@@ -134,11 +136,26 @@ PLAYLIST_SCHEMA = {
                     "loop_audio_program": {
                         "type": "boolean",
                         "default": False
+                    },
+                    "audio_intro_delay_ms": {
+                        "type": ["integer", "null"],
+                        "minimum": 0,
+                        "default": 0
+                    },
+                    "audio_outro_duration_ms": {
+                        "type": ["integer", "null"],
+                        "minimum": 0,
+                        "default": 0
+                    },
+                    "audio_program_volume": { # NEW
+                        "type": ["number", "null"],
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "default": DEFAULT_AUDIO_PROGRAM_VOLUME
                     }
-                    # --- END NEW AUDIO FIELDS ---
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True # Allow other keys at slide level
+                "additionalProperties": True
             },
             "default": []
         }

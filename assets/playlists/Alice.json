@@ -1,0 +1,58 @@
+{
+    "slides": [
+        {
+            "layers": [
+                "Alice.jpg"
+            ],
+            "duration": 0,
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "font_family": "URW Bookman [UKWN]",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "middle",
+                "fit_to_width": false,
+                "paragraph_name": "srt-little_crocodile",
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": true,
+                "auto_advance_slide": false
+            },
+            "audio_program_name": "Alice01",
+            "loop_audio_program": false,
+            "audio_intro_delay_ms": 0,
+            "audio_outro_duration_ms": 0,
+            "audio_program_volume": 0.8
+        },
+        {
+            "layers": [
+                "Alice002.jpg"
+            ],
+            "duration": 0,
+            "loop_to_slide": 0,
+            "text_overlay": {
+                "font_family": "Bitstream Charter",
+                "font_size": 48,
+                "font_color": "#FFFFFF",
+                "background_color": "#000000",
+                "background_alpha": 155,
+                "text_align": "center",
+                "text_vertical_align": "middle",
+                "fit_to_width": false,
+                "paragraph_name": "srt-little_crocodile",
+                "start_sentence": 1,
+                "end_sentence": "all",
+                "sentence_timing_enabled": true,
+                "auto_advance_slide": false
+            },
+            "audio_program_name": "Alice02",
+            "loop_audio_program": false,
+            "audio_intro_delay_ms": 0,
+            "audio_outro_duration_ms": 0,
+            "audio_program_volume": 0.8
+        }
+    ]
+}
