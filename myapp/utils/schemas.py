@@ -31,20 +31,20 @@ PARAGRAPH_SCHEMA = {
                     "delay_seconds": {
                         "type": "number",
                         "minimum": 0,
-                        "default": 2.0 # Default if no VO
+                        "default": 0.1 # Default if no VO, changed from 2.0
                     },
-                    "voice_over_track_name": { # NEW
+                    "voice_over_track_name": {
                         "type": ["string", "null"],
                         "default": None
                     },
-                    "voice_over_volume": { # NEW
-                        "type": ["number", "null"],
+                    "voice_over_volume": {
+                        "type": ["number", "null"], # Allow null if no track
                         "minimum": 0.0,
                         "maximum": 1.0,
-                        "default": DEFAULT_VOICE_OVER_VOLUME
+                        "default": DEFAULT_VOICE_OVER_VOLUME # Default when a track is assigned
                     }
                 },
-                "required": ["text"], # delay_seconds will be defaulted or set by VO
+                "required": ["text"],
                 "additionalProperties": False
             },
             "default": []
@@ -90,7 +90,7 @@ PLAYLIST_SCHEMA = {
                             },
                             "sentence_timing_enabled": {
                                 "type": "boolean",
-                                "default": False # This now means text controller uses sentence delays
+                                "default": False
                             },
                             "auto_advance_slide": {
                                 "type": "boolean",
@@ -166,13 +166,13 @@ PLAYLIST_SCHEMA = {
                     }
                 },
                 "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True
+                "additionalProperties": True # Allow other non-defined keys
             },
             "default": []
         }
     },
     "required": ["slides"],
-    "additionalProperties": True
+    "additionalProperties": True # Allow other non-defined keys at root
 }
 
 SETTINGS_SCHEMA = {
@@ -216,7 +216,7 @@ AUDIO_TRACK_METADATA_SCHEMA = {
     "properties": {
         "track_name": {"type": "string"},
         "file_path": {"type": "string"},
-        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0}
+        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0} # Allow null
     },
     "required": ["track_name", "file_path"],
     "additionalProperties": False
