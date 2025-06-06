@@ -57,15 +57,15 @@ class MediaRenderer(QMainWindow):
         self.setCentralWidget(self.view)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-        # --- FIX: Assign a parent to the QMediaPlayer instance ---
         self.media_player = QMediaPlayer(self)
-        # --- END FIX ---
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.video_item = QGraphicsVideoItem()
         self.media_player.setVideoOutput(self.video_item)
         self.scene.addItem(self.video_item)
 
+        self._play_request_pending = False
+        self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
         self.media_player.durationChanged.connect(self._handle_duration_changed)
         self.media_player.positionChanged.connect(self._handle_position_changed)
         self.media_player.playbackStateChanged.connect(self._handle_state_changed)
@@ -81,6 +81,13 @@ class MediaRenderer(QMainWindow):
         if 0.0 <= volume <= 1.0:
             self.audio_output.setVolume(volume)
             logger.debug(f"MediaRenderer volume set to {volume}")
+
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus):
+        logger.debug(f"Media status changed: {status}")
+        if status == QMediaPlayer.MediaStatus.LoadedMedia and self._play_request_pending:
+            logger.info("Media is loaded and a play request is pending. Starting playback.")
+            self.media_player.play()
+            self._play_request_pending = False
 
     def _handle_duration_changed(self, duration: int):
         self.video_duration_changed.emit(duration)
@@ -111,6 +118,7 @@ class MediaRenderer(QMainWindow):
 
     def display_video(self, video_filename):
         logger.debug(f"Displaying video: {video_filename}")
+        self._play_request_pending = False
         self.current_video_path = get_media_file_path(video_filename)
         if not os.path.exists(self.current_video_path):
             logger.error(f"Video file not found: {self.current_video_path}")
@@ -121,15 +129,25 @@ class MediaRenderer(QMainWindow):
         self.resizeEvent(None)
 
     def play_video(self):
-        if self.current_video_path:
+        if not self.current_video_path:
+            return
+
+        logger.info("Play requested. Checking media status...")
+        if self.media_player.mediaStatus() == QMediaPlayer.MediaStatus.LoadedMedia:
+            logger.debug("Media already loaded, playing immediately.")
             self.media_player.play()
+        else:
+            logger.debug("Media not loaded yet. Setting pending play request.")
+            self._play_request_pending = True
 
     def pause_video(self):
         if self.current_video_path:
+            self._play_request_pending = False
             self.media_player.pause()
 
     def stop_video(self):
         if self.current_video_path:
+            self._play_request_pending = False
             self.media_player.stop()
 
     def seek_video(self, position):
