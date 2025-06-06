@@ -131,8 +131,7 @@ class ControlWindow(QMainWindow):
                                                   self.open_playlist_editor)
         self.settings_button = create_button(" Settings", "settings.png", "Open Application Settings",
                                              self.open_settings_window)
-        self.screenshot_button = create_button(" Screenshot", "shot.png", "Take a screenshot of the display window",
-                                               self.take_screenshot)
+
         self.issue_label = QLabel("")
         self.issue_label.setStyleSheet("color: red; font-weight: bold;")
         self.issue_icon_widget = QWidget()
@@ -141,10 +140,10 @@ class ControlWindow(QMainWindow):
         self.issue_icon_layout.setSpacing(2)
         self.close_app_button = create_button(" Close App", "close.png", "Close the application (Ctrl+Q)",
                                               self.close_application)
+
         top_buttons_layout.addWidget(self.load_button)
         top_buttons_layout.addWidget(self.edit_playlist_button)
         top_buttons_layout.addWidget(self.settings_button)
-        top_buttons_layout.addWidget(self.screenshot_button)
         top_buttons_layout.addStretch()
         top_buttons_layout.addWidget(self.issue_label)
         top_buttons_layout.addWidget(self.issue_icon_widget)
@@ -196,33 +195,7 @@ class ControlWindow(QMainWindow):
         logger.debug("ControlWindow UI setup complete.")
         self.ui_updater.update_issue_display([])
 
-    # --- FIX: Added the missing take_screenshot method ---
-    def take_screenshot(self):
-        if not self.display_window or not self.display_window.isVisible():
-            QMessageBox.warning(self, "Screenshot Error", "Display window is not visible.")
-            return
-
-        screenshot = self.display_window.grab_screenshot()
-        if screenshot.isNull():
-            QMessageBox.warning(self, "Screenshot Error", "Failed to capture the display window.")
-            return
-
-        default_path = os.path.join(get_media_path(), "screenshot.png")
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Screenshot",
-            default_path,
-            "PNG Image (*.png);;JPEG Image (*.jpg)"
-        )
-
-        if file_path:
-            if not screenshot.save(file_path):
-                QMessageBox.critical(self, "Save Error", f"Failed to save screenshot to {file_path}")
-            else:
-                QMessageBox.information(self, "Success", f"Screenshot saved to {file_path}")
-
-    # --- END FIX ---
-
+    # ... (rest of the file is unchanged, but included for completeness) ...
     def populate_playlist_view(self):
         logger.debug("Populating playlist view...")
         self.playlist_view.clear()
@@ -326,47 +299,6 @@ class ControlWindow(QMainWindow):
 
         self.ui_updater.update_all()
 
-    def auto_advance_or_loop_slide(self):
-        logger.debug(f"Main SlideTimer timeout.")
-        if self._is_timer_for_video_intro_delay:
-            self._is_timer_for_video_intro_delay = False
-            logger.info("Video intro timer expired. Playing video.")
-            self.display_window.play_video()
-            return
-        if self._is_timer_for_initial_text_delay:
-            self._is_timer_for_initial_text_delay = False
-            if self.text_controller.is_active():
-                logger.info("Initial text delay timer expired. Showing first sentence.")
-                self.text_controller.show_first_sentence()
-            else:
-                logger.warning("Initial text delay timer expired, but no text active.")
-            return
-
-        if not self.is_displaying:
-            logger.warning("Slide duration/outro timer fired but main display is false. Stopping.")
-            return
-
-        slide_data = self.playlist.get_slide(self.current_index)
-        if not slide_data: self.clear_display_screen(); return
-
-        num_slides = len(self.playlist.get_slides())
-        loop_target_1_based = slide_data.get("loop_to_slide", 0)
-        if loop_target_1_based > 0:
-            loop_target_0_based = loop_target_1_based - 1
-            if 0 <= loop_target_0_based < num_slides:
-                logger.info(f"Slide timer: Looping slide to {loop_target_1_based}.")
-                self._set_slide_index(loop_target_0_based)
-                self._display_current_slide()
-                return
-
-        if self.current_index < num_slides - 1:
-            logger.info("Slide timer: Auto-advancing to next slide.")
-            self.next_slide()
-        else:
-            logger.info("Slide timer: Expired on last slide, no valid loop. Clearing display.")
-            self.clear_display_screen()
-
-    # ... (The rest of the methods are unchanged and omitted for brevity) ...
     def _on_video_position_changed(self, position):
         if not self.video_progress_slider.isSliderDown():
             self.video_progress_slider.setValue(position)
@@ -478,6 +410,42 @@ class ControlWindow(QMainWindow):
             self._set_slide_index(new_idx)
         else:
             self._set_slide_index(-1)
+            self.clear_display_screen()
+
+    def auto_advance_or_loop_slide(self):
+        logger.debug(f"Main SlideTimer timeout.")
+        if self._is_timer_for_video_intro_delay:
+            self._is_timer_for_video_intro_delay = False
+            logger.info("Video intro timer expired. Playing video.")
+            self.display_window.play_video()
+            return
+        if self._is_timer_for_initial_text_delay:
+            self._is_timer_for_initial_text_delay = False
+            if self.text_controller.is_active():
+                logger.info("Initial text delay timer expired. Showing first sentence.")
+                self.text_controller.show_first_sentence()
+            else:
+                logger.warning("Initial text delay timer expired, but no text active.")
+            return
+        if not self.is_displaying:
+            logger.warning("Slide duration/outro timer fired but main display is false. Stopping.")
+            return
+        slide_data = self.playlist.get_slide(self.current_index)
+        if not slide_data: self.clear_display_screen(); return
+        num_slides = len(self.playlist.get_slides())
+        loop_target_1_based = slide_data.get("loop_to_slide", 0)
+        if loop_target_1_based > 0:
+            loop_target_0_based = loop_target_1_based - 1
+            if 0 <= loop_target_0_based < num_slides:
+                logger.info(f"Slide timer: Looping slide to {loop_target_1_based}.")
+                self._set_slide_index(loop_target_0_based)
+                self._display_current_slide()
+                return
+        if self.current_index < num_slides - 1:
+            logger.info("Slide timer: Auto-advancing to next slide.")
+            self.next_slide()
+        else:
+            logger.info("Slide timer: Expired on last slide, no valid loop. Clearing display.")
             self.clear_display_screen()
 
     def _handle_text_finished_advance(self):
