@@ -57,14 +57,17 @@ def test_playlist_load_valid(mock_validate, valid_playlist_file):
         assert len(playlist.get_slides()) == 2
 
         default_audio = get_default_slide_audio_settings()
+        # --- FIX: Add new video/thumbnail keys to expected data ---
         expected_slide_0 = {
             "layers": ["image1.png"], "duration": 5, "loop_to_slide": 0,
-            "text_overlay": None, "audio_program_name": None,  # Original fields
+            "text_overlay": None, "audio_program_name": None,
+            "video_path": None, "thumbnail_path": None,
             "loop_audio_program": default_audio["loop_audio_program"],
             "audio_intro_delay_ms": default_audio["audio_intro_delay_ms"],
             "audio_outro_duration_ms": default_audio["audio_outro_duration_ms"],
             "audio_program_volume": default_audio["audio_program_volume"]
         }
+        # --- END FIX ---
         assert playlist.get_slide(0) == expected_slide_0
         assert playlist.file_path == valid_playlist_file
         assert playlist.get_playlists_directory() == os.path.dirname(valid_playlist_file)
@@ -96,15 +99,18 @@ def test_playlist_save_and_load(mock_validate, playlist_instance, temp_playlist_
     actual_loaded_slide = loaded_playlist.get_slide(0)
     default_audio = get_default_slide_audio_settings()
 
+    # --- FIX: Add new video/thumbnail keys to expected data ---
     expected_loaded_slide = {
         "layers": ["new_image.png"], "duration": 10, "loop_to_slide": 1,
         "text_overlay": None,
+        "video_path": None, "thumbnail_path": None,
         "audio_program_name": default_audio["audio_program_name"],
         "loop_audio_program": default_audio["loop_audio_program"],
         "audio_intro_delay_ms": default_audio["audio_intro_delay_ms"],
         "audio_outro_duration_ms": default_audio["audio_outro_duration_ms"],
         "audio_program_volume": default_audio["audio_program_volume"]
     }
+    # --- END FIX ---
 
     assert actual_loaded_slide == expected_loaded_slide
     assert mock_validate.call_count >= 1

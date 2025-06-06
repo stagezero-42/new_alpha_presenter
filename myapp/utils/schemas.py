@@ -163,17 +163,24 @@ PLAYLIST_SCHEMA = {
                         "minimum": 0.0,
                         "maximum": 1.0,
                         "default": DEFAULT_AUDIO_PROGRAM_VOLUME
+                    },
+                    "video_path": {
+                        "type": ["string", "null"]
+                    },
+                    "thumbnail_path": {
+                        "type": ["string", "null"]
                     }
                 },
-                "required": ["layers", "duration", "loop_to_slide"],
-                "additionalProperties": True # Allow other non-defined keys
+                "required": [],
+                "additionalProperties": True
             },
             "default": []
         }
     },
     "required": ["slides"],
-    "additionalProperties": True # Allow other non-defined keys at root
+    "additionalProperties": True
 }
+
 
 SETTINGS_SCHEMA = {
     "type": "object",

@@ -3,40 +3,25 @@ import logging
 from PySide6.QtWidgets import QAbstractItemView, QLabel
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt
+from PySide6.QtMultimedia import QMediaPlayer
 from ..utils.paths import get_icon_file_path
-
-# Forward declaration to avoid circular import issues with type hinting
-# In a real scenario, you might use interfaces or restructure.
-# For now, we'll rely on duck typing or 'Any' if needed.
-# from .control_window import ControlWindow
 
 logger = logging.getLogger(__name__)
 
+
 class ControlWindowUIUpdater:
-    """
-    Manages updating the UI elements of the ControlWindow based on state changes.
-    """
-
     def __init__(self, control_window):
-        """
-        Initializes the UI Updater.
-
-        Args:
-            control_window: The main ControlWindow instance.
-        """
         self.cw = control_window
         logger.debug("ControlWindowUIUpdater initialized.")
 
     def update_all(self):
-        """Updates all relevant UI elements."""
         logger.debug("Updating all UI states.")
         self.update_list_selection()
         self.update_show_clear_button_state()
         self.update_navigation_buttons_state()
-        # Note: Issue display is updated separately when the playlist changes.
+        self.update_video_controls_state()
 
     def update_list_selection(self):
-        """Updates the selection in the QListWidget to match the current index."""
         logger.debug(f"Updating list selection to index {self.cw.current_index}.")
         item_to_select = None
         list_widget = self.cw.playlist_view
@@ -47,22 +32,20 @@ class ControlWindowUIUpdater:
                     item_to_select = item
                     break
         try:
-            # Temporarily disconnect to prevent feedback loops during update
             list_widget.currentItemChanged.disconnect(self.cw.handle_list_selection)
         except (TypeError, RuntimeError):
-            pass  # Not connected or already disconnected
+            pass
 
         list_widget.setCurrentItem(item_to_select)
         if item_to_select:
             list_widget.scrollToItem(item_to_select, QAbstractItemView.ScrollHint.PositionAtCenter)
 
-        # Reconnect the signal handler
         list_widget.currentItemChanged.connect(self.cw.handle_list_selection)
 
     def update_show_clear_button_state(self):
-        """Updates the text, icon, and tooltip of the Show/Clear button."""
         button = self.cw.show_clear_button
-        if self.cw.is_displaying or self.cw.text_controller.is_active():
+        is_video_playing = self.cw.display_window and self.cw.display_window.current_video_path
+        if self.cw.is_displaying or self.cw.text_controller.is_active() or is_video_playing:
             button.setText(" Clear")
             button.setIcon(QIcon(get_icon_file_path("clear.png")))
             button.setToolTip("Clear the display (Space or Esc)")
@@ -70,12 +53,9 @@ class ControlWindowUIUpdater:
             button.setText(" Show")
             button.setIcon(QIcon(get_icon_file_path("play.png")))
             button.setToolTip("Show the selected slide (Space)")
-
         button.setEnabled(bool(self.cw.playlist.get_slides()))
 
-
     def update_navigation_buttons_state(self):
-        """Updates the enabled state of the Prev/Next buttons."""
         slides = self.cw.playlist.get_slides()
         has_slides = bool(slides)
         num_slides = len(slides)
@@ -98,13 +78,11 @@ class ControlWindowUIUpdater:
         self.cw.next_button.setEnabled(can_go_next)
 
     def update_issue_display(self, issues_found: list):
-        """Updates the UI elements to show detected playlist issues."""
         label = self.cw.issue_label
         icon_widget = self.cw.issue_icon_widget
         icon_layout = self.cw.issue_icon_layout
         indicator_icons = self.cw.indicator_icons
 
-        # Clear previous icons
         while icon_layout.count():
             item = icon_layout.takeAt(0)
             widget = item.widget()
@@ -113,7 +91,6 @@ class ControlWindowUIUpdater:
 
         if issues_found:
             label.setText(f"ISSUES: {len(issues_found)}")
-
             first_issue_slide_index = issues_found[0]["index"]
             first_issue_icons = sorted(list(issues_found[0]["icons"]))
             first_issue_descriptions = issues_found[0]["descriptions"]
@@ -131,7 +108,6 @@ class ControlWindowUIUpdater:
 
             label.setToolTip(tooltip_text)
             icon_widget.setToolTip(tooltip_text)
-
             label.show()
             icon_widget.show()
         else:
@@ -140,3 +116,36 @@ class ControlWindowUIUpdater:
             icon_widget.setToolTip("")
             label.hide()
             icon_widget.hide()
+
+    def update_video_controls_state(self):
+        # --- FIX: Explicitly cast the result to a boolean ---
+        is_video_loaded = bool(self.cw.display_window and self.cw.display_window.current_video_path)
+        # --- END FIX ---
+        self.cw.video_play_pause_button.setEnabled(is_video_loaded)
+        self.cw.video_progress_slider.setEnabled(is_video_loaded)
+        self.cw.video_time_label.setEnabled(is_video_loaded)
+        if not is_video_loaded:
+            self.cw.video_time_label.setText("--:-- / --:--")
+            self.cw.video_progress_slider.setValue(0)
+        self.update_video_button_icon()
+
+    def update_video_time_label(self, position, duration):
+        def format_time(ms):
+            s = ms // 1000
+            m, s = divmod(s, 60)
+            h, m = divmod(m, 60)
+            if h > 0:
+                return f"{h:d}:{m:02d}:{s:02d}"
+            return f"{m:02d}:{s:02d}"
+
+        self.cw.video_time_label.setText(f"{format_time(position)} / {format_time(duration)}")
+
+    def update_video_button_icon(self):
+        """Updates the video play/pause button icon based on the player's state."""
+        state = self.cw.display_window.get_playback_state() if self.cw.display_window else QMediaPlayer.PlaybackState.StoppedState
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.cw.video_play_pause_button.setIcon(QIcon(get_icon_file_path("pause.png")))
+            self.cw.video_play_pause_button.setToolTip("Pause Video")
+        else:
+            self.cw.video_play_pause_button.setIcon(QIcon(get_icon_file_path("play.png")))
+            self.cw.video_play_pause_button.setToolTip("Play Video")

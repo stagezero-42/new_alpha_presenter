@@ -1,7 +1,7 @@
 # myapp/gui/playlist_editor.py
 import os
 import logging
-import copy  # For deepcopy
+import copy
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QMessageBox, QListWidget, QListWidgetItem, QAbstractItemView
@@ -11,12 +11,13 @@ from PySide6.QtGui import QIcon
 
 from .file_dialog_helpers import get_themed_open_filename, get_themed_save_filename
 from .layer_editor_dialog import LayerEditorDialog
+from .video_editor_dialog import VideoEditorDialog
 from .settings_window import SettingsWindow
 from .text_editor_window import TextEditorWindow
 from .audio_program_editor_window import AudioProgramEditorWindow
 
-from ..playlist.playlist import Playlist, get_default_slide_audio_settings  # Import getter
-from ..utils.paths import get_playlists_path, get_icon_file_path
+from ..playlist.playlist import Playlist, get_default_slide_audio_settings
+from ..utils.paths import get_playlists_path, get_icon_file_path, get_media_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
 
@@ -36,7 +37,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlists_base_dir = get_playlists_path()
 
         self.setWindowTitle(f"{self.base_title} [*]")
-        self.setGeometry(100, 100, 700, 600)
+        self.setGeometry(100, 100, 800, 600)
         self.setWindowModified(False)
         self.settings_window_instance = None
         self.text_editor_window_instance = None
@@ -47,14 +48,13 @@ class PlaylistEditorWindow(QMainWindow):
             icon_path = get_icon_file_path(icon_name)
             if icon_path and os.path.exists(icon_path):
                 self.setWindowIcon(QIcon(icon_path))
-            else:
-                logger.warning(f"PlaylistEditor icon '{icon_name}' not found.")
         except Exception as e:
             logger.error(f"Failed to set PlaylistEditor window icon: {e}", exc_info=True)
 
         self.setup_ui()
         self.update_title()
         self.populate_list()
+        self.update_button_states()
         logger.debug("PlaylistEditorWindow initialized.")
 
     def setup_ui(self):
@@ -84,25 +84,32 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist_list = QListWidget()
         self.playlist_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.playlist_list.itemDoubleClicked.connect(self.edit_slide_layers_dialog)
+        self.playlist_list.currentItemChanged.connect(self.update_button_states)  # Update buttons on selection change
         main_layout.addWidget(self.playlist_list)
 
         slide_controls_layout = QHBoxLayout()
-        self.add_slide_button = create_button(" Add Slide", "add.png", "Add a new slide", self.add_slide)
-        self.duplicate_slide_button = create_button(" Duplicate Slide", "duplicate.png",  # NEW BUTTON
-                                                    "Duplicate selected slide", self.duplicate_selected_slide)
-        self.edit_slide_button = create_button(" Edit Slide Details", "edit.png", "Edit selected slide",
+        self.add_slide_button = create_button(" Add Image Slide", "add.png", "Add a new image-based slide",
+                                              self.add_slide)
+        # --- FIX: Connect to the new context-aware method ---
+        self.add_video_button = create_button(" Add Video Slide", "video.png", "Add or edit a video slide",
+                                              self.add_or_edit_video_slide)
+        # --- END FIX ---
+        self.duplicate_slide_button = create_button(" Duplicate Slide", "duplicate.png", "Duplicate selected slide",
+                                                    self.duplicate_selected_slide)
+        self.edit_slide_button = create_button(" Edit Slide Details", "edit.png", "Edit selected slide (images only)",
                                                self.edit_selected_slide_layers)
         self.edit_text_button = create_button(" Edit Text Paragraphs", "text.png", "Open Text Editor",
                                               self.open_text_editor)
         self.edit_audio_programs_button = create_button(" Edit Audio Programs", "audio_icon.png",
                                                         "Open Audio Program Editor", self.open_audio_program_editor)
-        self.preview_slide_button = create_button(" Preview Slide Images", "preview.png",
-                                                  "Preview selected slide images", self.preview_selected_slide)
+        self.preview_slide_button = create_button(" Preview Slide", "preview.png", "Preview selected slide",
+                                                  self.preview_selected_slide)
         self.remove_slide_button = create_button(" Remove Slide", "remove.png", "Remove selected slide",
                                                  self.remove_slide)
 
         slide_controls_layout.addWidget(self.add_slide_button)
-        slide_controls_layout.addWidget(self.duplicate_slide_button)  # NEW
+        slide_controls_layout.addWidget(self.add_video_button)
+        slide_controls_layout.addWidget(self.duplicate_slide_button)
         slide_controls_layout.addWidget(self.edit_slide_button)
         slide_controls_layout.addWidget(self.edit_text_button)
         slide_controls_layout.addWidget(self.edit_audio_programs_button)
@@ -120,6 +127,11 @@ class PlaylistEditorWindow(QMainWindow):
             logger.error(f"Could not retrieve slide data for row {row} during edit.")
             return
 
+        if slide_data.get("video_path"):
+            QMessageBox.information(self, "Edit Slide",
+                                    "Video slide properties can be edited using the 'Edit Video Slide' button.")
+            return
+
         logger.info(f"Opening layer/details editor for slide at index {row}.")
         editor = LayerEditorDialog(
             slide_layers=slide_data.get("layers", []),
@@ -132,7 +144,6 @@ class PlaylistEditorWindow(QMainWindow):
             current_audio_outro_duration_ms=slide_data.get("audio_outro_duration_ms", 0),
             current_audio_program_volume=slide_data.get("audio_program_volume",
                                                         get_default_slide_audio_settings()["audio_program_volume"]),
-            # NEW
             display_window_instance=self.display_window,
             parent=self
         )
@@ -140,32 +151,86 @@ class PlaylistEditorWindow(QMainWindow):
         if editor.exec():
             logger.info(f"Layer/details editor for slide {row} accepted.")
             updated_data_from_dialog = editor.get_updated_slide_data()
-            changes = {}
-            all_keys = ["layers", "duration", "loop_to_slide", "text_overlay",
-                        "audio_program_name", "loop_audio_program",
-                        "audio_intro_delay_ms", "audio_outro_duration_ms",
-                        "audio_program_volume"]  # NEW
-            for key in all_keys:
-                old_val = slide_data.get(key)
-                new_val = updated_data_from_dialog.get(key)
-                if key == "text_overlay":
-                    old_val = old_val if isinstance(old_val, dict) else {}
-                    new_val = new_val if isinstance(new_val, dict) else {}
-                if old_val != new_val:
-                    changes[key] = {"old": old_val, "new": new_val}
-
-            if changes:
-                logger.info(f"Slide {row} data changed. Updating playlist. Changes: {changes}")
-                slide_data.update(updated_data_from_dialog)
-                self.playlist.update_slide(row, slide_data)
-                self.mark_dirty()
-            else:
-                logger.info(f"Layer/details editor for slide {row} closed with no changes.")
+            self.playlist.update_slide(row, updated_data_from_dialog)
+            self.mark_dirty()
             self.populate_list()
             self.playlist_list.setCurrentRow(row)
         else:
             logger.info(f"Layer/details editor for slide {row} cancelled.")
 
+    def update_button_states(self):
+        current_item = self.playlist_list.currentItem()
+        is_item_selected = current_item is not None
+        is_video_slide = False
+        if is_item_selected:
+            slide_data = current_item.data(Qt.ItemDataRole.UserRole)
+            is_video_slide = bool(slide_data and slide_data.get("video_path"))
+
+        self.duplicate_slide_button.setEnabled(is_item_selected)
+        self.remove_slide_button.setEnabled(is_item_selected)
+        self.preview_slide_button.setEnabled(is_item_selected)
+        self.edit_slide_button.setEnabled(is_item_selected and not is_video_slide)
+
+        if is_video_slide:
+            self.add_video_button.setText(" Edit Video Slide")
+            self.add_video_button.setToolTip("Edit the selected video slide")
+        else:
+            self.add_video_button.setText(" Add Video Slide")
+            self.add_video_button.setToolTip("Add a new video-based slide")
+
+    def add_or_edit_video_slide(self):
+        current_item = self.playlist_list.currentItem()
+
+        if current_item:
+            slide_data = current_item.data(Qt.ItemDataRole.UserRole)
+            if slide_data and slide_data.get("video_path"):
+                self._edit_selected_video_slide()
+                return
+
+        self._add_new_video_slide()
+
+    def _add_new_video_slide(self):
+        logger.info("Add new video slide action triggered.")
+        video_dialog = VideoEditorDialog(self)
+        video_dialog.video_slide_data_updated.connect(self._handle_new_video_slide_creation)
+        video_dialog.exec()
+
+    def _edit_selected_video_slide(self):
+        logger.info("Edit selected video slide action triggered.")
+        current_item = self.playlist_list.currentItem()
+        if not current_item: return
+
+        row = self.playlist_list.row(current_item)
+        slide_data = self.playlist.get_slide(row)
+        if not slide_data or not slide_data.get("video_path"): return
+
+        video_path = get_media_file_path(slide_data.get("video_path"))
+        thumb_path = get_media_file_path(slide_data.get("thumbnail_path"))
+
+        video_dialog = VideoEditorDialog(
+            self,
+            initial_video_path=video_path,
+            initial_thumbnail_path=thumb_path
+        )
+        # Re-use the creation slot, but it will update the slide at the specific row
+        video_dialog.video_slide_data_updated.connect(
+            lambda new_data: self._handle_edited_video_slide_update(row, new_data)
+        )
+        video_dialog.exec()
+
+    def _handle_new_video_slide_creation(self, slide_data):
+        self.playlist.add_slide(slide_data)
+        self.populate_list()
+        self.playlist_list.setCurrentRow(self.playlist_list.count() - 1)
+        self.mark_dirty()
+
+    def _handle_edited_video_slide_update(self, row, new_slide_data):
+        self.playlist.update_slide(row, new_slide_data)
+        self.populate_list()
+        self.playlist_list.setCurrentRow(row)
+        self.mark_dirty()
+
+    # The rest of the methods (open_text_editor, save, load, etc.) remain unchanged...
     def open_text_editor(self):
         logger.info("Opening text editor window...")
         if self.text_editor_window_instance is None or not self.text_editor_window_instance.isVisible():
@@ -213,52 +278,13 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist_list.clear()
 
         for i, slide in enumerate(self.playlist.get_slides()):
-            layers_str = ", ".join(slide.get("layers", []))
-            duration = slide.get("duration", 0)
-            loop_target = slide.get("loop_to_slide", 0)
-            text_info = slide.get("text_overlay")
+            video_path = slide.get("video_path")
+            if video_path:
+                item_text = f"Slide {i + 1} (Video): {os.path.basename(video_path)}"
+            else:
+                layers_str = ", ".join(slide.get("layers", []))
+                item_text = f"Slide {i + 1}: {layers_str if layers_str else '[Empty Image Slide]'}"
 
-            audio_program_name = slide.get("audio_program_name")
-            loop_audio = slide.get("loop_audio_program", False)
-            audio_intro_ms = slide.get("audio_intro_delay_ms", 0)
-            audio_outro_ms = slide.get("audio_outro_duration_ms", 0)
-            audio_volume = slide.get("audio_program_volume", get_default_slide_audio_settings()["audio_program_volume"])
-
-            base_item_text = f"Slide {i + 1}"
-            details = []
-
-            if audio_program_name:
-                audio_detail = f"Audio: {audio_program_name}"
-                if loop_audio: audio_detail += " (Loop)"
-                if audio_intro_ms > 0: audio_detail += f", Intro: {audio_intro_ms / 1000.0:.1f}s"
-                if audio_outro_ms > 0: audio_detail += f", Outro: {audio_outro_ms / 1000.0:.1f}s"
-                if audio_volume != get_default_slide_audio_settings()[
-                    "audio_program_volume"]:  # Only show if not default
-                    audio_detail += f", Vol: {int(audio_volume * 100)}%"
-                details.append(audio_detail)
-
-            if text_info and text_info.get("paragraph_name"):
-                text_detail = f"Txt: {text_info['paragraph_name']}"
-                if text_info.get("sentence_timing_enabled", False):
-                    text_detail += f" (Timed, Delay: {duration}s)"
-                elif duration > 0:
-                    text_detail += f" (Delay: {duration}s)"
-                else:
-                    text_detail += " (Manual Text)"
-                details.append(text_detail)
-            elif not audio_program_name and duration > 0:
-                details.append(f"Duration: {duration}s")
-            elif not audio_program_name and not (text_info and text_info.get("paragraph_name")):
-                details.append("Manual Advance")
-
-            if loop_target > 0:
-                is_slide_timed_for_loop = duration > 0 or (text_info and text_info.get("sentence_timing_enabled"))
-                if is_slide_timed_for_loop:
-                    details.append(f"Loop Slide to S{loop_target}")
-                else:
-                    details.append(f"Loop Slide to S{loop_target} (Inactive)")
-
-            item_text = f"{base_item_text} ({', '.join(details)}): {layers_str if layers_str else '[Empty Slide]'}"
             list_item = QListWidgetItem(item_text)
             list_item.setData(Qt.ItemDataRole.UserRole, slide)
             self.playlist_list.addItem(list_item)
@@ -268,34 +294,18 @@ class PlaylistEditorWindow(QMainWindow):
         elif self.playlist_list.count() > 0:
             self.playlist_list.setCurrentRow(0)
 
+        self.update_button_states()
         logger.info(f"Playlist list populated with {self.playlist_list.count()} items.")
 
     def update_playlist_from_list_order(self):
         logger.debug("Updating internal playlist order from list widget.")
         new_slides = []
-        changed_order = False
-        current_playlist_slides = self.playlist.get_slides()
-
-        if self.playlist_list.count() != len(current_playlist_slides):
-            changed_order = True
-
         for i in range(self.playlist_list.count()):
             item = self.playlist_list.item(i)
             if item:
-                slide_data = item.data(Qt.ItemDataRole.UserRole)
-                new_slides.append(slide_data)
-                if not changed_order and (
-                        i >= len(current_playlist_slides) or current_playlist_slides[i] != slide_data):
-                    changed_order = True
-            else:
-                logger.error(f"Missing item at index {i} in playlist_list during reorder.")
-                changed_order = True;
-                break
-
-        if changed_order:
-            self.playlist.set_slides(new_slides)
-            self.mark_dirty()
-            logger.debug("Internal playlist order updated.")
+                new_slides.append(item.data(Qt.ItemDataRole.UserRole))
+        self.playlist.set_slides(new_slides)
+        self.mark_dirty()
 
     def new_playlist(self):
         logger.info("New playlist action triggered.")
@@ -316,6 +326,7 @@ class PlaylistEditorWindow(QMainWindow):
         default_audio = get_default_slide_audio_settings()
         new_slide_data = {
             "layers": [], "duration": 0, "loop_to_slide": 0, "text_overlay": None,
+            "video_path": None, "thumbnail_path": None,
             "audio_program_name": default_audio["audio_program_name"],
             "loop_audio_program": default_audio["loop_audio_program"],
             "audio_intro_delay_ms": default_audio["audio_intro_delay_ms"],
@@ -343,16 +354,12 @@ class PlaylistEditorWindow(QMainWindow):
             logger.error(f"Could not get data for slide at row {row} to duplicate.")
             return
 
-        # Create a deep copy to ensure nested structures like text_overlay are also copied
         duplicated_slide_data = copy.deepcopy(original_slide_data)
-
-        self.update_playlist_from_list_order()  # Ensure current order is reflected in model
-
+        self.update_playlist_from_list_order()
         insert_index = row + 1
-        self.playlist.insert_slide(insert_index, duplicated_slide_data)  # Uses new method in Playlist
-
+        self.playlist.insert_slide(insert_index, duplicated_slide_data)
         self.populate_list()
-        self.playlist_list.setCurrentRow(insert_index)  # Select the new duplicate
+        self.playlist_list.setCurrentRow(insert_index)
         self.mark_dirty()
         logger.info(f"Slide at index {row} duplicated to index {insert_index}.")
 
@@ -394,20 +401,7 @@ class PlaylistEditorWindow(QMainWindow):
         row = self.playlist_list.row(current_item)
         slide_data = self.playlist.get_slide(row)
         if slide_data:
-            layers_to_preview = slide_data.get("layers", [])
-            logger.info(f"Previewing slide at index {row} with layers: {layers_to_preview}")
-            self.display_window.current_text = None
-            if hasattr(self.display_window, 'slide_audio_player') and self.display_window.slide_audio_player:
-                self.display_window.slide_audio_player.stop()
-            self.display_window.display_images(layers_to_preview)
-
-            preview_notes = ["Image preview shown."]
-            if slide_data.get("text_overlay"):
-                preview_notes.append("Text overlay appears when slide is played via Control Window.")
-            if slide_data.get("audio_program_name"):
-                preview_notes.append(
-                    "Audio program (with any intro/outro/volume) plays when slide is run via Control Window.")
-            QMessageBox.information(self, "Preview Note", "\n".join(preview_notes))
+            self.display_window.display_slide(slide_data)
 
     def load_playlist_dialog(self):
         logger.info("Load playlist dialog action triggered.")

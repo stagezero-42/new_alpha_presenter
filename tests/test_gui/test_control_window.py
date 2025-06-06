@@ -26,6 +26,9 @@ def mock_media_renderer():
     """Creates a MagicMock for the MediaRenderer."""
     renderer_mock = MagicMock(spec=MediaRenderer)
     renderer_mock.text_item = None
+    # --- FIX: Add the missing attribute to the mock object ---
+    renderer_mock.current_video_path = None
+    # --- END FIX ---
     return renderer_mock
 
 @pytest.fixture
@@ -40,8 +43,6 @@ def control_window(qapp, mock_media_renderer):
                      window = ControlWindow(mock_media_renderer)
                      mock_setup_keys.assert_called_once_with(window, window.settings_manager)
     window.playlist = MagicMock(spec=Playlist)
-    # Ensure PlaylistIOHandler uses a mock settings manager too if needed,
-    # but here we mock its outputs directly in the test.
     return window
 
 @pytest.fixture
@@ -55,43 +56,33 @@ def valid_playlist_path(tmp_path):
         json.dump(playlist_content, f)
     return str(playlist_path)
 
-# --- MODIFIED TEST ---
 @patch('myapp.gui.playlist_io_handler.get_themed_open_filename')
 def test_load_playlist_dialog_opens_and_loads(mock_get_themed_open_filename, control_window, valid_playlist_path):
     mock_get_themed_open_filename.return_value = valid_playlist_path
     playlists_dir = os.path.dirname(valid_playlist_path)
 
-    # Patch get_playlists_path where it's called (in playlist_io_handler)
     with patch('myapp.gui.playlist_io_handler.get_playlists_path', return_value=playlists_dir):
-         # Patch the new method _load_and_update_playlist in ControlWindow
          with patch.object(control_window, '_load_and_update_playlist') as mock_load_update:
-              # Patch Playlist in playlist_io_handler to avoid actual loading/validation
-              # during the prompt_load_playlist call within the test.
               with patch('myapp.gui.playlist_io_handler.Playlist', return_value=MagicMock()):
                 control_window.load_playlist_dialog()
                 mock_get_themed_open_filename.assert_called_once_with(
                     control_window, "Open Playlist", playlists_dir, "JSON Files (*.json)"
                 )
-                # Check that our internal method _load_and_update_playlist was called
                 mock_load_update.assert_called_once_with(valid_playlist_path)
-# --- END MODIFIED TEST ---
 
 def test_next_slide_updates_state_and_attempts_display(control_window):
-    # Configure the mock playlist on the control_window instance
     control_window.playlist.get_slides.return_value = [
         {"layers": ["img1.png"], "duration": 5, "loop_to_slide": 0, "text_overlay": None},
         {"layers": ["img2.png"], "duration": 0, "loop_to_slide": 0, "text_overlay": None}
     ]
-    control_window.current_index = 0 # Start at the first slide
+    control_window.current_index = 0
 
-    # We expect _display_current_slide to be called when next_slide successfully moves
     with patch.object(control_window, '_display_current_slide') as mock_display_current:
         control_window.next_slide()
         assert control_window.current_index == 1
         mock_display_current.assert_called_once()
 
-    # Test boundary condition: already at the last slide
-    control_window.current_index = 1 # Move to the last slide
+    control_window.current_index = 1
     with patch.object(control_window, '_display_current_slide') as mock_display_current_again:
         control_window.next_slide()
         assert control_window.current_index == 1
