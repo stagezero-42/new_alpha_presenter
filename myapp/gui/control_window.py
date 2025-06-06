@@ -52,7 +52,6 @@ class ControlWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Failed to set window icon: {e}")
 
-        # --- FIX: Initialize managers and UI updater before connecting signals ---
         self.settings_manager = SettingsManager()
         self.playlist = Playlist()
         self.paragraph_manager = ParagraphManager()
@@ -61,9 +60,10 @@ class ControlWindow(QMainWindow):
         self.playlist_validator = PlaylistValidator(self.paragraph_manager)
         self.ui_updater = ControlWindowUIUpdater(self)
 
+        # --- Connect signals from MediaRenderer ---
         self.display_window.video_duration_changed.connect(self._on_video_duration_changed)
         self.display_window.video_position_changed.connect(self._on_video_position_changed)
-        self.display_window.video_state_changed.connect(self.ui_updater.update_video_button_icon)
+        self.display_window.video_state_changed.connect(self._handle_video_state_changed)
 
         self.slide_audio_player = SlideAudioPlayer(self.audio_program_manager, self.audio_track_manager, self)
         self.slide_audio_player.playback_error_occurred.connect(self._handle_slide_audio_error)
@@ -73,11 +73,11 @@ class ControlWindow(QMainWindow):
 
         self.text_controller = TextController(self.paragraph_manager, self.display_window, self.voice_over_player)
         self.playlist_io = PlaylistIOHandler(self, self.settings_manager)
-        # --- END FIX ---
 
         self.current_index = -1
         self.is_displaying = False
         self._is_timer_for_initial_text_delay = False
+        self._is_timer_for_video_intro_delay = False  # New flag
 
         self.editor_window = None
         self.settings_window_instance = None
@@ -97,12 +97,8 @@ class ControlWindow(QMainWindow):
         logger.debug("Loading indicator icons...")
         icons = {}
         icon_files = {
-            "slide": "slide_icon.png",
-            "timer": "timer_icon.png",
-            "loop": "loop_icon.png",
-            "text": "text.png",
-            "audio": "audio_icon.png",
-            "video": "video.png"
+            "slide": "slide_icon.png", "timer": "timer_icon.png", "loop": "loop_icon.png",
+            "text": "text.png", "audio": "audio_icon.png", "video": "video.png"
         }
         size = 16
         for name, filename in icon_files.items():
@@ -138,17 +134,14 @@ class ControlWindow(QMainWindow):
                                              self.open_settings_window)
         self.screenshot_button = create_button(" Screenshot", "shot.png", "Take a screenshot of the display window",
                                                self.take_screenshot)
-
         self.issue_label = QLabel("")
         self.issue_label.setStyleSheet("color: red; font-weight: bold;")
         self.issue_icon_widget = QWidget()
         self.issue_icon_layout = QHBoxLayout(self.issue_icon_widget)
         self.issue_icon_layout.setContentsMargins(0, 0, 0, 0)
         self.issue_icon_layout.setSpacing(2)
-
         self.close_app_button = create_button(" Close App", "close.png", "Close the application (Ctrl+Q)",
                                               self.close_application)
-
         top_buttons_layout.addWidget(self.load_button)
         top_buttons_layout.addWidget(self.edit_playlist_button)
         top_buttons_layout.addWidget(self.settings_button)
@@ -190,11 +183,8 @@ class ControlWindow(QMainWindow):
         self.toggle_display_button = create_button("Show Display", "show_display.png",
                                                    "Show or Hide the Display Window",
                                                    self.toggle_display_window_visibility)
-        self.prev_button = create_button(" Prev", "previous.png", "Previous slide/sentence (Arrow Keys, Page Up/Down)",
-                                         self.prev_slide)
-        self.next_button = create_button(" Next", "next.png", "Next slide/sentence (Arrow Keys, Page Up/Down)",
-                                         self.next_slide)
-
+        self.prev_button = create_button(" Prev", "previous.png", "Previous slide/sentence", self.prev_slide)
+        self.next_button = create_button(" Next", "next.png", "Next slide/sentence", self.next_slide)
         playback_buttons_layout.addWidget(self.show_clear_button)
         playback_buttons_layout.addWidget(self.toggle_display_button)
         playback_buttons_layout.addStretch()
@@ -210,38 +200,24 @@ class ControlWindow(QMainWindow):
     def populate_playlist_view(self):
         logger.debug("Populating playlist view...")
         self.playlist_view.clear()
-
         for i, slide_data in enumerate(self.playlist.get_slides()):
             text_overlay_info = slide_data.get("text_overlay", {})
             has_text = bool(text_overlay_info and text_overlay_info.get("paragraph_name"))
-
-            audio_config = {
-                "audio_program_name": slide_data.get("audio_program_name"),
-                "loop_audio_program": slide_data.get("loop_audio_program", False),
-                "audio_intro_delay_ms": slide_data.get("audio_intro_delay_ms", 0),
-                "audio_outro_duration_ms": slide_data.get("audio_outro_duration_ms", 0),
-                "audio_program_volume": slide_data.get("audio_program_volume", DEFAULT_AUDIO_PROGRAM_VOLUME)
-            }
+            audio_config = {"audio_program_name": slide_data.get("audio_program_name"),
+                            "loop_audio_program": slide_data.get("loop_audio_program", False)}
             has_audio = bool(audio_config["audio_program_name"])
-
-            composite_icon = create_composite_thumbnail(
-                slide_data, i, self.indicator_icons,
-                has_text_overlay=has_text,
-                has_audio_program=has_audio,
-                audio_program_loops=audio_config["loop_audio_program"]
-            )
+            composite_icon = create_composite_thumbnail(slide_data, i, self.indicator_icons, has_text_overlay=has_text,
+                                                        has_audio_program=has_audio,
+                                                        audio_program_loops=audio_config["loop_audio_program"])
             item = QListWidgetItem(composite_icon, "")
-
             is_video = bool(slide_data.get("video_path"))
             tooltip_parts = [f"Slide {i + 1}"]
             if is_video:
                 tooltip_parts.append(f"Video: {os.path.basename(slide_data['video_path'])}")
-
             tooltip_parts.append(f"Layers: {len(slide_data.get('layers', []))}")
             item.setToolTip("\n".join(tooltip_parts))
             item.setData(Qt.ItemDataRole.UserRole, i)
             self.playlist_view.addItem(item)
-
         logger.info(f"Playlist view populated with {self.playlist_view.count()} items.")
         issues = self.playlist_validator.validate(self.playlist)
         self.ui_updater.update_issue_display(issues)
@@ -250,12 +226,10 @@ class ControlWindow(QMainWindow):
         if not self.display_window or not self.display_window.isVisible():
             QMessageBox.warning(self, "Screenshot Error", "Display window is not visible.")
             return
-
         screenshot = self.display_window.grab_screenshot()
         if screenshot.isNull():
             QMessageBox.warning(self, "Screenshot Error", "Failed to capture the display window.")
             return
-
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Screenshot", get_media_path(),
                                                    "PNG Image (*.png);;JPEG Image (*.jpg)")
         if file_path:
@@ -275,8 +249,25 @@ class ControlWindow(QMainWindow):
         self.ui_updater.update_video_time_label(self.display_window.media_player.position(), duration)
 
     def _on_video_position_changed(self, position):
-        self.video_progress_slider.setValue(position)
+        if not self.video_progress_slider.isSliderDown():
+            self.video_progress_slider.setValue(position)
         self.ui_updater.update_video_time_label(position, self.display_window.media_player.duration())
+
+    def _handle_video_state_changed(self, state: QMediaPlayer.PlaybackState):
+        self.ui_updater.update_video_button_icon()
+        if state == QMediaPlayer.PlaybackState.StoppedState and self.display_window.current_video_path:
+            # Video has finished playing (or was stopped). Now handle outro/loop.
+            logger.debug("Video playback stopped. Checking for outro/loop.")
+            slide_data = self.playlist.get_slide(self.current_index)
+            if not slide_data: return
+
+            outro_delay = slide_data.get("duration", 0)  # Use duration field as outro
+            if outro_delay > 0:
+                self._is_timer_for_video_intro_delay = False
+                self._is_timer_for_initial_text_delay = False
+                self.slide_timer.start(outro_delay)
+            else:
+                self.auto_advance_or_loop_slide()
 
     def _handle_slide_audio_error(self, error_message: str):
         logger.error(f"SlideAudioPlayer reported error: {error_message}")
@@ -291,6 +282,7 @@ class ControlWindow(QMainWindow):
         self.text_controller.reset()
         self.slide_audio_player.stop()
         self._is_timer_for_initial_text_delay = False
+        self._is_timer_for_video_intro_delay = False
 
         slides = self.playlist.get_slides()
         if not (0 <= self.current_index < len(slides)):
@@ -310,31 +302,39 @@ class ControlWindow(QMainWindow):
         self.is_displaying = True
         self.display_window.display_slide(slide_data)
 
-        audio_config_to_pass = {"audio_program_name": slide_data.get("audio_program_name"),
-                                "loop_audio_program": slide_data.get("loop_audio_program", False),
-                                "audio_intro_delay_ms": slide_data.get("audio_intro_delay_ms", 0),
-                                "audio_outro_duration_ms": slide_data.get("audio_outro_duration_ms", 0),
-                                "audio_program_volume": slide_data.get("audio_program_volume",
-                                                                       DEFAULT_AUDIO_PROGRAM_VOLUME)}
-        if audio_config_to_pass["audio_program_name"]:
-            logger.info(f"Slide {self.current_index + 1} passing audio config to slide player: {audio_config_to_pass}")
-            self.slide_audio_player.load_program_and_play(audio_config_to_pass)
+        # --- FIX: Added logic to handle video auto-play and delays ---
+        is_video_slide = bool(slide_data.get("video_path"))
 
-        can_show_text, initial_delay_for_text = self.text_controller.load_slide_text(slide_data)
-        if can_show_text:
-            if initial_delay_for_text > 0:
-                logger.info(
-                    f"Starting initial text delay: {initial_delay_for_text}s for slide {self.current_index + 1}.")
-                self._is_timer_for_initial_text_delay = True;
-                self.slide_timer.start(initial_delay_for_text)
-            else:
-                logger.info("No initial text delay. Showing first sentence.");
-                self.text_controller.show_first_sentence()
-        elif not audio_config_to_pass["audio_program_name"] and not slide_data.get("video_path"):
-            slide_duration = slide_data.get("duration", 0)
-            if slide_duration > 0:
-                logger.debug(f"Starting slide duration timer: {slide_duration}s.")
-                self.slide_timer.start(slide_duration)
+        if is_video_slide:
+            if slide_data.get("video_autoplay", True):
+                intro_delay = slide_data.get("video_intro_delay_ms", 0)
+                if intro_delay > 0:
+                    logger.info(f"Starting video intro delay: {intro_delay}ms")
+                    self._is_timer_for_video_intro_delay = True
+                    self.slide_timer.start(intro_delay / 1000.0)
+                else:
+                    self.display_window.play_video()
+        else:
+            audio_config_to_pass = {"audio_program_name": slide_data.get("audio_program_name"),
+                                    "loop_audio_program": slide_data.get("loop_audio_program", False),
+                                    "audio_intro_delay_ms": slide_data.get("audio_intro_delay_ms", 0),
+                                    "audio_outro_duration_ms": slide_data.get("audio_outro_duration_ms", 0),
+                                    "audio_program_volume": slide_data.get("audio_program_volume",
+                                                                           DEFAULT_AUDIO_PROGRAM_VOLUME)}
+            if audio_config_to_pass["audio_program_name"]:
+                self.slide_audio_player.load_program_and_play(audio_config_to_pass)
+
+            can_show_text, initial_delay_for_text = self.text_controller.load_slide_text(slide_data)
+            if can_show_text:
+                if initial_delay_for_text > 0:
+                    self._is_timer_for_initial_text_delay = True
+                    self.slide_timer.start(initial_delay_for_text)
+                else:
+                    self.text_controller.show_first_sentence()
+            elif not audio_config_to_pass["audio_program_name"]:
+                slide_duration = slide_data.get("duration", 0)
+                if slide_duration > 0:
+                    self.slide_timer.start(slide_duration)
 
         self.ui_updater.update_all()
 
@@ -343,21 +343,22 @@ class ControlWindow(QMainWindow):
         self.text_controller.reset()
         self.slide_audio_player.stop()
         self._is_timer_for_initial_text_delay = False
+        self._is_timer_for_video_intro_delay = False
         if self.display_window: self.display_window.clear_display()
-        self.is_displaying = False;
+        self.is_displaying = False
         self.ui_updater.update_all()
 
     def _set_slide_index(self, new_index):
-        slides = self.playlist.get_slides();
-        num_slides = len(slides);
-        old_index = self.current_index;
+        slides = self.playlist.get_slides()
+        num_slides = len(slides)
+        old_index = self.current_index
         changed = False
         if not slides:
             if self.current_index != -1: self.current_index = -1; changed = True
         elif 0 <= new_index < num_slides:
             if self.current_index != new_index: self.current_index = new_index; changed = True
         elif not (0 <= self.current_index < num_slides):
-            self.current_index = -1 if not slides else 0;
+            self.current_index = -1 if not slides else 0
             changed = (old_index != self.current_index)
         if changed: self.ui_updater.update_all()
         return changed
@@ -374,35 +375,33 @@ class ControlWindow(QMainWindow):
 
     def next_slide(self):
         logger.debug("ControlWindow: next_slide called")
-        self.text_controller.stop_sentence_timer()
+        self.slide_timer.stop()  # Stop any outro/intro timers
         if self.text_controller.is_active():
             if self.text_controller.show_next_sentence():
                 self.ui_updater.update_all();
                 return
-            else:
-                self.text_controller.reset()
+
         slides = self.playlist.get_slides()
         if not slides or not (self.current_index < len(slides) - 1):
-            logger.info("Cannot go next: No more slides or playlist empty.");
-            self.ui_updater.update_all();
+            logger.info("Cannot go next: No more slides or playlist empty.")
+            self.ui_updater.update_all()
             return
-        self._set_slide_index(self.current_index + 1);
+        self._set_slide_index(self.current_index + 1)
         self._display_current_slide()
 
     def prev_slide(self):
         logger.debug("ControlWindow: prev_slide called")
-        self.text_controller.stop_sentence_timer()
+        self.slide_timer.stop()  # Stop any outro/intro timers
         if self.text_controller.is_active():
             if self.text_controller.show_prev_sentence():
                 self.ui_updater.update_all();
                 return
-            else:
-                self.text_controller.reset()
+
         if not self.playlist.get_slides() or self.current_index <= 0:
-            logger.info("Cannot go previous: No slides or already at the start.");
-            self.ui_updater.update_all();
+            logger.info("Cannot go previous: No slides or already at the start.")
+            self.ui_updater.update_all()
             return
-        self._set_slide_index(self.current_index - 1);
+        self._set_slide_index(self.current_index - 1)
         self._display_current_slide()
 
     def go_to_selected_slide_from_list(self, item: QListWidgetItem):
@@ -418,61 +417,68 @@ class ControlWindow(QMainWindow):
     def handle_list_selection(self, current_item: QListWidgetItem, previous_item: QListWidgetItem):
         logger.debug(
             f"List selection changed. Current: {current_item.data(Qt.ItemDataRole.UserRole) if current_item else 'None'}")
-        self.slide_timer.stop();
+        self.slide_timer.stop()
         self.text_controller.stop_sentence_timer()
         if current_item:
             new_idx = current_item.data(Qt.ItemDataRole.UserRole)
             if self.current_index != new_idx:
-                self.is_displaying = False;
+                self.is_displaying = False
                 self.text_controller.reset()
                 if self.display_window: self.display_window.clearText()
             self._set_slide_index(new_idx)
         else:
-            self._set_slide_index(-1);
+            self._set_slide_index(-1)
             self.clear_display_screen()
 
     def auto_advance_or_loop_slide(self):
-        logger.debug(f"Main SlideTimer timeout. For initial text delay: {self._is_timer_for_initial_text_delay}")
+        logger.debug(f"Main SlideTimer timeout.")
+        if self._is_timer_for_video_intro_delay:
+            self._is_timer_for_video_intro_delay = False
+            logger.info("Video intro timer expired. Playing video.")
+            self.display_window.play_video()
+            return
         if self._is_timer_for_initial_text_delay:
             self._is_timer_for_initial_text_delay = False
             if self.text_controller.is_active():
-                logger.info("Initial text delay timer expired. Showing first sentence.");
+                logger.info("Initial text delay timer expired. Showing first sentence.")
                 self.text_controller.show_first_sentence()
             else:
                 logger.warning("Initial text delay timer expired, but no text active.")
             return
-        if not self.is_displaying: logger.warning(
-            "Slide duration timer fired but main display is false. Stopping."); return
+
+        if not self.is_displaying:
+            logger.warning("Slide duration/outro timer fired but main display is false. Stopping.")
+            return
+
         slide_data = self.playlist.get_slide(self.current_index)
         if not slide_data: self.clear_display_screen(); return
-        num_slides = len(self.playlist.get_slides());
+
+        num_slides = len(self.playlist.get_slides())
         loop_target_1_based = slide_data.get("loop_to_slide", 0)
         if loop_target_1_based > 0:
             loop_target_0_based = loop_target_1_based - 1
             if 0 <= loop_target_0_based < num_slides:
-                logger.info(f"Slide timer: Looping slide to {loop_target_1_based}.");
-                self._set_slide_index(loop_target_0_based);
-                self._display_current_slide();
+                logger.info(f"Slide timer: Looping slide to {loop_target_1_based}.")
+                self._set_slide_index(loop_target_0_based)
+                self._display_current_slide()
                 return
-            else:
-                logger.warning(
-                    f"Slide timer: Invalid slide loop target ({loop_target_1_based}). Advancing if possible.")
+
         if self.current_index < num_slides - 1:
-            logger.info("Slide timer: Auto-advancing to next slide.");
+            logger.info("Slide timer: Auto-advancing to next slide.")
             self.next_slide()
         else:
-            logger.info("Slide timer: Expired on last slide, no valid slide loop. Clearing display (and audio).");
+            logger.info("Slide timer: Expired on last slide, no valid loop. Clearing display.")
             self.clear_display_screen()
 
     def _handle_text_finished_advance(self):
-        logger.info("TextController signaled to advance to next slide.");
+        logger.info("TextController signaled to advance to next slide.")
         self.text_controller.reset()
         slides = self.playlist.get_slides()
         if self.current_index < len(slides) - 1:
-            self._set_slide_index(self.current_index + 1);
+            self._set_slide_index(self.current_index + 1)
             self._display_current_slide()
         else:
-            logger.info("Text finished on the last slide, no next slide to auto-advance to via text controller.")
+            logger.info("Text finished on last slide, no next slide to advance to.")
             self.is_displaying = True
             if self.display_window: self.display_window.clearText()
         self.ui_updater.update_all()
@@ -480,66 +486,69 @@ class ControlWindow(QMainWindow):
     def _load_and_update_playlist(self, file_path: str):
         self.clear_display_screen()
         try:
-            self.playlist.load(file_path);
+            self.playlist.load(file_path)
             self.settings_manager.set_current_playlist(file_path)
         except (FileNotFoundError, ValueError) as e:
-            QMessageBox.critical(self, "Error", str(e));
-            self.playlist = Playlist();
+            QMessageBox.critical(self, "Error", str(e))
+            self.playlist = Playlist()
             self.settings_manager.set_current_playlist(None)
-        self.populate_playlist_view();
-        self._set_slide_index(0 if self.playlist.get_slides() else -1);
+        self.populate_playlist_view()
+        self._set_slide_index(0 if self.playlist.get_slides() else -1)
         self.ui_updater.update_all()
 
     def load_playlist_dialog(self):
-        file_path = self.playlist_io.prompt_load_playlist();
+        file_path = self.playlist_io.prompt_load_playlist()
         if file_path: self._load_and_update_playlist(file_path)
 
     def load_last_playlist(self):
         file_path = self.playlist_io.get_last_playlist_path()
         if file_path:
-            logger.info(f"Attempting to load last playlist: {file_path}");
+            logger.info(f"Attempting to load last playlist: {file_path}")
             self._load_and_update_playlist(file_path)
         else:
-            logger.info("No valid last playlist found.");
-            self.populate_playlist_view();
-            self.clear_display_screen();
+            logger.info("No valid last playlist found.")
+            self.populate_playlist_view()
+            self.clear_display_screen()
             self.ui_updater.update_all()
 
     def open_playlist_editor(self):
         if self.editor_window is None or not self.editor_window.isVisible():
-            self.slide_audio_player.stop();
+            self.slide_audio_player.stop()
             self.voice_over_player.stop()
+            if self.display_window.get_playback_state() != QMediaPlayer.PlaybackState.StoppedState:
+                self.display_window.stop_video()
             self.editor_window = PlaylistEditorWindow(self.display_window, self.playlist, self)
-            self.editor_window.playlist_saved_signal.connect(self.handle_playlist_saved_by_editor);
+            self.editor_window.playlist_saved_signal.connect(self.handle_playlist_saved_by_editor)
             self.editor_window.show()
         else:
-            self.editor_window.activateWindow();
+            self.editor_window.activateWindow()
             self.editor_window.raise_()
 
     def handle_playlist_saved_by_editor(self, saved_playlist_path):
-        logger.info(f"Playlist saved by editor, reloading: {saved_playlist_path}");
+        logger.info(f"Playlist saved by editor, reloading: {saved_playlist_path}")
         self._load_and_update_playlist(saved_playlist_path)
 
     def open_settings_window(self):
         if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
-            self.settings_window_instance = SettingsWindow(self);
+            self.settings_window_instance = SettingsWindow(self)
             self.settings_window_instance.show()
         else:
-            self.settings_window_instance.activateWindow();
+            self.settings_window_instance.activateWindow()
             self.settings_window_instance.raise_()
 
     def toggle_display_window_visibility(self):
         if self.display_window:
             if self.display_window.isVisible():
-                self.display_window.hide();
-                self.toggle_display_button.setText("Show Display");
+                self.display_window.hide()
+                self.toggle_display_button.setText("Show Display")
                 self.toggle_display_button.setIcon(QIcon(get_icon_file_path("show_display.png")))
             else:
                 screens = QApplication.instance().screens()
-                if screens: target_screen = screens[1] if len(screens) > 1 else screens[
-                    0]; self.display_window.setGeometry(target_screen.geometry())
-                self.display_window.showFullScreen();
-                self.toggle_display_button.setText("Hide Display");
+                if screens:
+                    target_screen = screens[1] if len(screens) > 1 else screens[0]
+                    self.display_window.setGeometry(target_screen.geometry())
+                self.display_window.showFullScreen()
+                self.toggle_display_button.setText("Hide Display")
                 self.toggle_display_button.setIcon(QIcon(get_icon_file_path("hide_display.png")))
 
     def close_application(self):
@@ -550,11 +559,10 @@ class ControlWindow(QMainWindow):
         self.slide_timer.stop()
         self.text_controller.reset()
         self.slide_audio_player.stop()
-
         if self.editor_window and self.editor_window.isVisible():
             if not self.editor_window.close(): logger.info("Playlist editor close cancelled."); event.ignore(); return
         if self.settings_window_instance and self.settings_window_instance.isVisible(): self.settings_window_instance.close()
         if self.display_window and self.display_window.isVisible(): self.display_window.close()
-        logger.info("Quitting application.");
-        QCoreApplication.instance().quit();
+        logger.info("Quitting application.")
+        QCoreApplication.instance().quit()
         event.accept()

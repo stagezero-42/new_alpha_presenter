@@ -31,17 +31,17 @@ PARAGRAPH_SCHEMA = {
                     "delay_seconds": {
                         "type": "number",
                         "minimum": 0,
-                        "default": 0.1 # Default if no VO, changed from 2.0
+                        "default": 0.1
                     },
                     "voice_over_track_name": {
                         "type": ["string", "null"],
                         "default": None
                     },
                     "voice_over_volume": {
-                        "type": ["number", "null"], # Allow null if no track
+                        "type": ["number", "null"],
                         "minimum": 0.0,
                         "maximum": 1.0,
-                        "default": DEFAULT_VOICE_OVER_VOLUME # Default when a track is assigned
+                        "default": DEFAULT_VOICE_OVER_VOLUME
                     }
                 },
                 "required": ["text"],
@@ -88,88 +88,30 @@ PLAYLIST_SCHEMA = {
                                     {"type": "string", "pattern": "^all$"}
                                 ]
                             },
-                            "sentence_timing_enabled": {
-                                "type": "boolean",
-                                "default": False
-                            },
-                            "auto_advance_slide": {
-                                "type": "boolean",
-                                "default": False
-                            },
-                            "font_family": {
-                                "type": "string",
-                                "default": DEFAULT_FONT_FAMILY
-                            },
-                            "font_size": {
-                                "type": "integer",
-                                "minimum": 8,
-                                "maximum": 200,
-                                "default": DEFAULT_FONT_SIZE
-                            },
-                            "font_color": {
-                                "type": "string",
-                                "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$",
-                                "default": DEFAULT_FONT_COLOR
-                            },
-                            "background_color": {
-                                "type": "string",
-                                "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$",
-                                "default": DEFAULT_BACKGROUND_COLOR
-                            },
-                            "background_alpha": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 255,
-                                "default": DEFAULT_BACKGROUND_ALPHA
-                            },
-                            "text_align": {
-                                "type": "string",
-                                "enum": ["left", "center", "right"],
-                                "default": DEFAULT_TEXT_ALIGN
-                            },
-                            "text_vertical_align": {
-                                "type": "string",
-                                "enum": ["top", "middle", "bottom"],
-                                "default": DEFAULT_TEXT_VERTICAL_ALIGN
-                            },
-                            "fit_to_width": {
-                                "type": "boolean",
-                                "default": DEFAULT_FIT_TO_WIDTH
-                            }
+                            "sentence_timing_enabled": { "type": "boolean", "default": False },
+                            "auto_advance_slide": { "type": "boolean", "default": False },
+                            "font_family": { "type": "string", "default": DEFAULT_FONT_FAMILY },
+                            "font_size": { "type": "integer", "minimum": 8, "maximum": 200, "default": DEFAULT_FONT_SIZE },
+                            "font_color": { "type": "string", "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$", "default": DEFAULT_FONT_COLOR },
+                            "background_color": { "type": "string", "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$", "default": DEFAULT_BACKGROUND_COLOR },
+                            "background_alpha": { "type": "integer", "minimum": 0, "maximum": 255, "default": DEFAULT_BACKGROUND_ALPHA },
+                            "text_align": { "type": "string", "enum": ["left", "center", "right"], "default": DEFAULT_TEXT_ALIGN },
+                            "text_vertical_align": { "type": "string", "enum": ["top", "middle", "bottom"], "default": DEFAULT_TEXT_VERTICAL_ALIGN },
+                            "fit_to_width": { "type": "boolean", "default": DEFAULT_FIT_TO_WIDTH }
                         },
                         "required": ["paragraph_name", "start_sentence", "end_sentence"],
                         "additionalProperties": False
                     },
-                    "audio_program_name": {
-                        "type": ["string", "null"],
-                        "default": None
-                    },
-                    "loop_audio_program": {
-                        "type": "boolean",
-                        "default": False
-                    },
-                    "audio_intro_delay_ms": {
-                        "type": ["integer", "null"],
-                        "minimum": 0,
-                        "default": 0
-                    },
-                    "audio_outro_duration_ms": {
-                        "type": ["integer", "null"],
-                        "minimum": 0,
-                        "default": 0
-                    },
-                    "audio_program_volume": {
-                        "type": ["number", "null"],
-                        "minimum": 0.0,
-                        "maximum": 1.0,
-                        "default": DEFAULT_AUDIO_PROGRAM_VOLUME
-                    },
-                    "video_path": {
-                        "type": ["string", "null"]
-                    },
-                    "thumbnail_path": {
-                        "type": ["string", "null"]
-                    }
+                    "audio_program_name": { "type": ["string", "null"], "default": None },
+                    "loop_audio_program": { "type": "boolean", "default": False },
+                    "audio_intro_delay_ms": { "type": ["integer", "null"], "minimum": 0, "default": 0 },
+                    "audio_outro_duration_ms": { "type": ["integer", "null"], "minimum": 0, "default": 0 },
+                    "audio_program_volume": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0, "default": DEFAULT_AUDIO_PROGRAM_VOLUME },
+                    "video_path": { "type": ["string", "null"] },
+                    "thumbnail_path": { "type": ["string", "null"] },
+                    "video_autoplay": { "type": "boolean", "default": True },
+                    "video_volume": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8 },
+                    "video_intro_delay_ms": { "type": "integer", "minimum": 0, "default": 0 }
                 },
                 "required": [],
                 "additionalProperties": True
@@ -181,13 +123,10 @@ PLAYLIST_SCHEMA = {
     "additionalProperties": True
 }
 
-
 SETTINGS_SCHEMA = {
     "type": "object",
     "properties": {
-        "current_playlist_path": {
-            "type": ["string", "null"]
-        },
+        "current_playlist_path": { "type": ["string", "null"] },
         "keybindings": {
             "type": "object",
             "properties": {
@@ -201,19 +140,9 @@ SETTINGS_SCHEMA = {
             },
             "additionalProperties": True
         },
-        "log_level": {
-            "type": "string",
-            "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-            "default": "INFO"
-        },
-        "log_to_file": {
-            "type": "boolean",
-            "default": False
-        },
-        "log_file_path": {
-            "type": "string",
-            "default": "alphapresenter.log"
-        }
+        "log_level": { "type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], "default": "INFO" },
+        "log_to_file": { "type": "boolean", "default": False },
+        "log_file_path": { "type": "string", "default": "alphapresenter.log" }
     },
     "additionalProperties": True
 }
@@ -223,7 +152,7 @@ AUDIO_TRACK_METADATA_SCHEMA = {
     "properties": {
         "track_name": {"type": "string"},
         "file_path": {"type": "string"},
-        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0} # Allow null
+        "detected_duration_ms": {"type": ["integer", "null"], "minimum": 0}
     },
     "required": ["track_name", "file_path"],
     "additionalProperties": False

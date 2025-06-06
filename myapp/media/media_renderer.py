@@ -58,10 +58,8 @@ class MediaRenderer(QMainWindow):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         self.media_player = QMediaPlayer()
-        # --- FIX: Create and set an audio output for the video player ---
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
-        # --- END FIX ---
         self.video_item = QGraphicsVideoItem()
         self.media_player.setVideoOutput(self.video_item)
         self.scene.addItem(self.video_item)
@@ -76,6 +74,11 @@ class MediaRenderer(QMainWindow):
         self.current_text = None
         self.current_style_options = {}
         logger.debug("MediaRenderer initialized.")
+
+    def set_volume(self, volume: float):
+        if 0.0 <= volume <= 1.0:
+            self.audio_output.setVolume(volume)
+            logger.debug(f"MediaRenderer volume set to {volume}")
 
     def _handle_duration_changed(self, duration: int):
         self.video_duration_changed.emit(duration)
@@ -92,6 +95,7 @@ class MediaRenderer(QMainWindow):
         video_path = slide_data.get("video_path")
         if video_path:
             self.display_video(video_path)
+            self.set_volume(slide_data.get("video_volume", 0.8))
         else:
             self.display_images(slide_data.get("layers", []))
 
@@ -121,6 +125,10 @@ class MediaRenderer(QMainWindow):
     def pause_video(self):
         if self.current_video_path:
             self.media_player.pause()
+
+    def stop_video(self):
+        if self.current_video_path:
+            self.media_player.stop()
 
     def seek_video(self, position):
         if self.current_video_path:
@@ -272,6 +280,7 @@ class MediaRenderer(QMainWindow):
         self.clearText()
         self.current_text = None
         self.current_style_options = {}
+        self.media_player.stop()
         self.media_player.setSource(QUrl())
         self.video_item.setVisible(False)
         self.current_video_path = None
