@@ -57,7 +57,9 @@ class MediaRenderer(QMainWindow):
         self.setCentralWidget(self.view)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
-        self.media_player = QMediaPlayer()
+        # --- FIX: Assign a parent to the QMediaPlayer instance ---
+        self.media_player = QMediaPlayer(self)
+        # --- END FIX ---
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.video_item = QGraphicsVideoItem()

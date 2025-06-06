@@ -75,7 +75,9 @@ class VideoEditorDialog(QDialog):
         playback_group = QGroupBox("Playback Options")
         playback_layout = QFormLayout(playback_group)
         self.autoplay_checkbox = QCheckBox("Auto-play video when slide is displayed")
+        self.auto_advance_checkbox = QCheckBox("Auto-advance to Next Slide after video finishes")  # New checkbox
         playback_layout.addRow(self.autoplay_checkbox)
+        playback_layout.addRow(self.auto_advance_checkbox)
 
         volume_layout = QHBoxLayout()
         self.volume_slider = QSlider(Qt.Horizontal)
@@ -125,12 +127,14 @@ class VideoEditorDialog(QDialog):
             self.thumb_path_label.setText(self.slide_data["thumbnail_path"])
 
         self.autoplay_checkbox.setChecked(self.slide_data.get("video_autoplay", True))
+        self.auto_advance_checkbox.setChecked(self.slide_data.get("video_auto_advance", True))  # Load new value
         volume = int(self.slide_data.get("video_volume", 0.8) * 100)
         self.volume_slider.setValue(volume)
         self.volume_label.setText(f"{volume}%")
         self.intro_delay_spinbox.setValue(self.slide_data.get("video_intro_delay_ms", 0))
         self.outro_delay_spinbox.setValue(self.slide_data.get("duration", 0))
         self.loop_to_spinbox.setValue(self.slide_data.get("loop_to_slide", 0))
+        self.update_button_states()
 
     def update_button_states(self):
         self.ok_button.setEnabled(bool(self.selected_video_path and self.selected_thumbnail_path))
@@ -140,21 +144,18 @@ class VideoEditorDialog(QDialog):
 
         if self.display_window:
             self.toggle_display_button.setText("Hide Display" if self.display_window.isVisible() else "Show Display")
-
-            # Update Play/Pause button based on player state, but only if it's the right video
-            is_previewing_this_video = (self.display_window.current_video_path and
-                                        os.path.basename(self.display_window.current_video_path) == os.path.basename(
-                        self.selected_video_path))
+            is_previewing_this_video = (self.display_window.current_video_path and os.path.basename(
+                self.display_window.current_video_path) == os.path.basename(self.selected_video_path))
 
             if is_previewing_this_video:
                 state = self.display_window.get_playback_state()
                 if state == QMediaPlayer.PlaybackState.PlayingState:
                     self.play_pause_button.setText("Pause")
                     self.play_pause_button.setIcon(QIcon(get_icon_file_path("pause.png")))
-                else:  # Paused or Stopped
+                else:
                     self.play_pause_button.setText("Play")
                     self.play_pause_button.setIcon(QIcon(get_icon_file_path("play.png")))
-            else:  # Not previewing this video, or not previewing at all
+            else:
                 self.play_pause_button.setText("Preview")
                 self.play_pause_button.setIcon(QIcon(get_icon_file_path("play.png")))
 
@@ -168,23 +169,17 @@ class VideoEditorDialog(QDialog):
 
     def _toggle_preview_playback(self):
         if not self.display_window or not self.selected_video_path: return
-
         if not self.display_window.isVisible():
             self.display_window.showFullScreen()
             self.update_button_states()
-
-        # Check if the correct video is loaded for preview
-        is_loaded = (self.display_window.current_video_path and
-                     os.path.samefile(self.display_window.current_video_path, self.selected_video_path))
-
+        is_loaded = (self.display_window.current_video_path and os.path.samefile(self.display_window.current_video_path,
+                                                                                 self.selected_video_path))
         if not is_loaded:
-            # Load the video for the first time
             self.display_window.clear_display()
             self.display_window.set_volume(self.volume_slider.value() / 100.0)
             self.display_window.display_video(os.path.basename(self.selected_video_path))
             self.display_window.play_video()
         else:
-            # Toggle play/pause
             if self.display_window.get_playback_state() == QMediaPlayer.PlaybackState.PlayingState:
                 self.display_window.pause_video()
             else:
@@ -193,7 +188,6 @@ class VideoEditorDialog(QDialog):
     def _stop_preview(self):
         if self.display_window:
             self.display_window.stop_video()
-            # After stopping, clear the display to show the thumbnail again if desired, or just black
             self.display_window.clear_display()
 
     def _browse_video(self):
@@ -214,25 +208,19 @@ class VideoEditorDialog(QDialog):
     def _copy_file_to_media(self, source_path):
         if not source_path or not os.path.exists(source_path):
             return None, f"Source file does not exist: {source_path}"
-
         filename = os.path.basename(source_path)
         if not is_safe_filename_component(filename):
             return None, f"Filename contains invalid characters: {filename}"
-
         dest_path = get_media_file_path(filename)
-
         if os.path.exists(dest_path) and os.path.samefile(source_path, dest_path):
             return filename, None
-
         if not os.path.isabs(source_path):
             return filename, None
-
         try:
             shutil.copy2(source_path, dest_path)
             logger.info(f"Copied '{filename}' to media directory.")
         except Exception as e:
             return None, f"Failed to copy '{filename}': {e}"
-
         return filename, None
 
     def _handle_ok(self):
@@ -249,6 +237,7 @@ class VideoEditorDialog(QDialog):
         updated_slide_data = {
             "layers": [], "video_path": video_filename, "thumbnail_path": thumb_filename,
             "video_autoplay": self.autoplay_checkbox.isChecked(),
+            "video_auto_advance": self.auto_advance_checkbox.isChecked(),  # Save new value
             "video_volume": self.volume_slider.value() / 100.0,
             "video_intro_delay_ms": self.intro_delay_spinbox.value(),
             "duration": self.outro_delay_spinbox.value(),
@@ -259,8 +248,10 @@ class VideoEditorDialog(QDialog):
         self.accept()
 
     def closeEvent(self, event):
-        # Stop any preview when the dialog is closed
         self._stop_preview()
         if self.display_window:
-            self.display_window.video_state_changed.disconnect(self.update_button_states)
+            try:
+                self.display_window.video_state_changed.disconnect(self.update_button_states)
+            except RuntimeError:
+                pass  # Already disconnected
         super().closeEvent(event)

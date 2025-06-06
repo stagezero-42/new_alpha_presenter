@@ -111,7 +111,8 @@ PLAYLIST_SCHEMA = {
                     "thumbnail_path": { "type": ["string", "null"] },
                     "video_autoplay": { "type": "boolean", "default": True },
                     "video_volume": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8 },
-                    "video_intro_delay_ms": { "type": "integer", "minimum": 0, "default": 0 }
+                    "video_intro_delay_ms": { "type": "integer", "minimum": 0, "default": 0 },
+                    "video_auto_advance": { "type": "boolean", "default": True }
                 },
                 "required": [],
                 "additionalProperties": True
@@ -123,6 +124,7 @@ PLAYLIST_SCHEMA = {
     "additionalProperties": True
 }
 
+# ... (rest of the schemas remain the same)
 SETTINGS_SCHEMA = {
     "type": "object",
     "properties": {
