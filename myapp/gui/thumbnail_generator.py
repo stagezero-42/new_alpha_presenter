@@ -158,4 +158,4 @@ def get_thumbnail_size():
 
 
 def get_list_widget_height():
-    return TOTAL_ICON_HEIGHT + 25
+    return TOTAL_ICON_HEIGHT + 27

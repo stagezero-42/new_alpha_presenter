@@ -163,6 +163,17 @@ class ControlWindow(QMainWindow):
         self.playlist_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
+        # --- Add this line to make the selection indicator thicker ---
+        self.playlist_view.setStyleSheet("""
+            QListWidget::item:selected {
+                border-bottom: 2px solid #3399FF;
+                background: transparent;
+            }
+            QListWidget::item {
+                background: transparent;
+            }
+        """)
+        # --- End of new code ---
         main_layout.addWidget(self.playlist_view)
 
         video_playback_layout = QHBoxLayout()
@@ -178,11 +189,23 @@ class ControlWindow(QMainWindow):
         playback_buttons_layout = QHBoxLayout()
         self.show_clear_button = QPushButton()
         self.show_clear_button.clicked.connect(self.handle_show_clear_click)
+
+        self.show_clear_button.setStyleSheet("font-size: 15pt; padding: 12px;")
+
         self.toggle_display_button = create_button("Show Display", "show_display.png",
                                                    "Show or Hide the Display Window",
                                                    self.toggle_display_window_visibility)
+        self.toggle_display_button.setStyleSheet("padding: 12px; font-size: 11pt;")
+        self.toggle_display_button.setIconSize(QSize(24, 24))
+
         self.prev_button = create_button(" Prev", "previous.png", "Previous slide/sentence", self.prev_slide)
+        self.prev_button.setStyleSheet("padding: 12px; font-size: 11pt;")
+        self.prev_button.setIconSize(QSize(24, 24))
+
         self.next_button = create_button(" Next", "next.png", "Next slide/sentence", self.next_slide)
+        self.next_button.setStyleSheet("padding: 12px; font-size: 11pt;")
+        self.next_button.setIconSize(QSize(24, 24))
+
         playback_buttons_layout.addWidget(self.show_clear_button)
         playback_buttons_layout.addWidget(self.toggle_display_button)
         playback_buttons_layout.addStretch()
@@ -191,7 +214,9 @@ class ControlWindow(QMainWindow):
         main_layout.addLayout(playback_buttons_layout)
 
         self.setCentralWidget(central_widget)
-        self.resize(700, 400)
+
+        self.resize(700, 280)
+
         logger.debug("ControlWindow UI setup complete.")
         self.ui_updater.update_issue_display([])
 
