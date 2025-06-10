@@ -4,7 +4,7 @@ import logging
 import copy
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QMessageBox, QListWidget, QListWidgetItem, QAbstractItemView
+    QMessageBox, QListWidget, QListWidgetItem, QAbstractItemView,  QGridLayout
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
@@ -34,7 +34,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist = playlist_obj
         self.playlists_base_dir = get_playlists_path()
         self.setWindowTitle(f"{self.base_title} [*]")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 550, 600)
         self.setWindowModified(False)
         self.settings_window_instance = None
         self.text_editor_window_instance = None
@@ -62,15 +62,14 @@ class PlaylistEditorWindow(QMainWindow):
         self.save_button = create_button(" Save", "save.png", "Save the current playlist", self.save_playlist)
         self.save_as_button = create_button(" Save As...", "save.png", "Save the current playlist under a new name",
                                             self.save_playlist_as)
-        self.settings_button = create_button(" Settings", "settings.png", "Application settings",
-                                             self.open_settings_window)
+
         self.done_button = create_button(" Done", "done.png", "Close the playlist editor", self.close)
         toolbar_layout.addWidget(self.new_button)
         toolbar_layout.addWidget(self.load_button)
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
-        toolbar_layout.addWidget(self.settings_button)
+
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
@@ -80,32 +79,45 @@ class PlaylistEditorWindow(QMainWindow):
         self.playlist_list.currentItemChanged.connect(self.update_button_states)
         main_layout.addWidget(self.playlist_list)
 
-        slide_controls_layout = QHBoxLayout()
-        self.add_slide_button = create_button(" Add Image Slide", "add.png", "Add a new image-based slide",
+
+        # --- Create a grid layout for the slide control buttons ---
+        slide_controls_layout = QGridLayout()
+
+
+        self.add_slide_button = create_button(" Add Image", "slide_icon.png", "Add a new image-based slide",
                                               self.add_slide)
-        self.add_video_button = create_button(" Add Video Slide", "video.png", "Add or edit a video slide",
+        self.add_video_button = create_button(" Add Video", "video.png", "Add or edit a video slide",
                                               self.add_or_edit_video_slide)
-        self.duplicate_slide_button = create_button(" Duplicate Slide", "duplicate.png", "Duplicate selected slide",
+        self.duplicate_slide_button = create_button(" Duplicate", "duplicate.png", "Duplicate selected slide",
                                                     self.duplicate_selected_slide)
-        self.edit_slide_button = create_button(" Edit Details", "edit.png", "Edit details for the selected slide",
+        self.edit_slide_button = create_button(" Edit Slide", "edit.png", "Edit details for the selected slide",
                                                self.edit_selected_slide_layers)
-        self.edit_text_button = create_button(" Edit Text Paragraphs", "text.png", "Open Text Editor",
+        self.edit_text_button = create_button(" Edit Text", "text.png", "Open Text Editor",
                                               self.open_text_editor)
-        self.edit_audio_programs_button = create_button(" Edit Audio Programs", "audio_icon.png",
+        self.edit_audio_programs_button = create_button(" Edit Audio", "audio_icon.png",
                                                         "Open Audio Program Editor", self.open_audio_program_editor)
-        self.preview_slide_button = create_button(" Preview Slide", "preview.png", "Preview selected slide",
+        self.preview_slide_button = create_button(" Preview", "preview.png", "Preview selected slide",
                                                   self.preview_selected_slide)
-        self.remove_slide_button = create_button(" Remove Slide", "remove.png", "Remove selected slide",
+        self.remove_slide_button = create_button(" Remove", "remove.png", "Remove selected slide",
                                                  self.remove_slide)
-        slide_controls_layout.addWidget(self.add_slide_button)
-        slide_controls_layout.addWidget(self.add_video_button)
-        slide_controls_layout.addWidget(self.duplicate_slide_button)
-        slide_controls_layout.addWidget(self.edit_slide_button)
-        slide_controls_layout.addWidget(self.edit_text_button)
-        slide_controls_layout.addWidget(self.edit_audio_programs_button)
-        slide_controls_layout.addWidget(self.preview_slide_button)
-        slide_controls_layout.addWidget(self.remove_slide_button)
+
+        # --- Add buttons to the grid layout at specific row, column positions ---
+        # First row (row 0)
+        slide_controls_layout.addWidget(self.add_slide_button, 0, 0)
+        slide_controls_layout.addWidget(self.edit_text_button, 0, 1)
+        slide_controls_layout.addWidget(self.edit_slide_button, 0, 2)
+        slide_controls_layout.addWidget(self.duplicate_slide_button, 0, 3)
+
+
+        # Second row (row 1)
+        slide_controls_layout.addWidget(self.add_video_button, 1, 0)
+
+        slide_controls_layout.addWidget(self.edit_audio_programs_button, 1, 1)
+        slide_controls_layout.addWidget(self.preview_slide_button, 1, 2)
+        slide_controls_layout.addWidget(self.remove_slide_button, 1, 3)
+
         main_layout.addLayout(slide_controls_layout)
+
         self.setCentralWidget(central_widget)
 
     def edit_slide_layers_dialog(self, item):
@@ -156,11 +168,11 @@ class PlaylistEditorWindow(QMainWindow):
         self.edit_slide_button.setEnabled(is_item_selected)
 
         if is_video_slide:
-            self.add_video_button.setText(" Edit Video Slide")
+            self.add_video_button.setText(" Edit Video")
             self.add_video_button.setToolTip("Edit the selected video slide")
             self.edit_slide_button.setToolTip("Edit details (Audio/Text) for the selected video slide")
         else:
-            self.add_video_button.setText(" Add Video Slide")
+            self.add_video_button.setText(" Add Video")
             self.add_video_button.setToolTip("Add a new video-based slide")
             self.edit_slide_button.setToolTip("Edit details (Images/Audio/Text) for the selected slide")
 
@@ -250,14 +262,6 @@ class PlaylistEditorWindow(QMainWindow):
             self.audio_program_editor_instance.activateWindow()
             self.audio_program_editor_instance.raise_()
 
-    def open_settings_window(self):
-        logger.info("Opening settings window...")
-        if self.settings_window_instance is None or not self.settings_window_instance.isVisible():
-            self.settings_window_instance = SettingsWindow(self)
-            self.settings_window_instance.show()
-        else:
-            self.settings_window_instance.activateWindow()
-            self.settings_window_instance.raise_()
 
     def mark_dirty(self, dirty=True):
         logger.debug(f"Marking window as dirty: {dirty}")

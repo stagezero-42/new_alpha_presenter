@@ -12,6 +12,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 
 from .playlist_editor import PlaylistEditorWindow
 from .settings_window import SettingsWindow
+from .help_window import HelpWindow
 from ..playlist.playlist import Playlist
 from ..text.paragraph_manager import ParagraphManager
 from ..utils.paths import get_icon_file_path, get_media_path
@@ -80,6 +81,7 @@ class ControlWindow(QMainWindow):
 
         self.editor_window = None
         self.settings_window_instance = None
+        self.help_window_instance = None
 
         self.slide_timer = SlideTimer(self)
         self.slide_timer.timeout_action_required.connect(self.auto_advance_or_loop_slide)
@@ -131,6 +133,8 @@ class ControlWindow(QMainWindow):
                                                   self.open_playlist_editor)
         self.settings_button = create_button(" Settings", "settings.png", "Open Application Settings",
                                              self.open_settings_window)
+        self.help_button = create_button("", "help.png", "Open Help", self.open_help_window)
+
 
         self.issue_label = QLabel("")
         self.issue_label.setStyleSheet("color: red; font-weight: bold;")
@@ -144,6 +148,7 @@ class ControlWindow(QMainWindow):
         top_buttons_layout.addWidget(self.load_button)
         top_buttons_layout.addWidget(self.edit_playlist_button)
         top_buttons_layout.addWidget(self.settings_button)
+        top_buttons_layout.addWidget(self.help_button)
         top_buttons_layout.addStretch()
         top_buttons_layout.addWidget(self.issue_label)
         top_buttons_layout.addWidget(self.issue_icon_widget)
@@ -163,17 +168,17 @@ class ControlWindow(QMainWindow):
         self.playlist_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.playlist_view.currentItemChanged.connect(self.handle_list_selection)
         self.playlist_view.itemDoubleClicked.connect(self.go_to_selected_slide_from_list)
-        # --- Add this line to make the selection indicator thicker ---
+
         self.playlist_view.setStyleSheet("""
-            QListWidget::item:selected {
-                border-bottom: 2px solid #3399FF;
-                background: transparent;
-            }
-            QListWidget::item {
-                background: transparent;
-            }
-        """)
-        # --- End of new code ---
+                  QListWidget::item:selected {
+                      border-bottom: 4px solid #3399FF;
+                      background: transparent;
+                  }
+                  QListWidget::item {
+                      background: transparent;
+                  }
+              """)
+
         main_layout.addWidget(self.playlist_view)
 
         video_playback_layout = QHBoxLayout()
@@ -189,6 +194,8 @@ class ControlWindow(QMainWindow):
         playback_buttons_layout = QHBoxLayout()
         self.show_clear_button = QPushButton()
         self.show_clear_button.clicked.connect(self.handle_show_clear_click)
+
+        #=================================
 
         self.show_clear_button.setStyleSheet("font-size: 15pt; padding: 12px;")
 
@@ -206,6 +213,8 @@ class ControlWindow(QMainWindow):
         self.next_button.setStyleSheet("padding: 12px; font-size: 11pt;")
         self.next_button.setIconSize(QSize(24, 24))
 
+        #==================================
+
         playback_buttons_layout.addWidget(self.show_clear_button)
         playback_buttons_layout.addWidget(self.toggle_display_button)
         playback_buttons_layout.addStretch()
@@ -214,9 +223,7 @@ class ControlWindow(QMainWindow):
         main_layout.addLayout(playback_buttons_layout)
 
         self.setCentralWidget(central_widget)
-
-        self.resize(700, 280)
-
+        self.resize(700, 295)
         logger.debug("ControlWindow UI setup complete.")
         self.ui_updater.update_issue_display([])
 
@@ -538,6 +545,15 @@ class ControlWindow(QMainWindow):
         else:
             self.settings_window_instance.activateWindow()
             self.settings_window_instance.raise_()
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            # Pass the anchor for the "Control Window" section
+            self.help_window_instance = HelpWindow(self, anchor="control_window")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def toggle_display_window_visibility(self):
         if self.display_window:
