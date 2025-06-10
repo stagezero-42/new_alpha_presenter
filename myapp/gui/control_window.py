@@ -142,6 +142,7 @@ class ControlWindow(QMainWindow):
         self.issue_icon_layout = QHBoxLayout(self.issue_icon_widget)
         self.issue_icon_layout.setContentsMargins(0, 0, 0, 0)
         self.issue_icon_layout.setSpacing(2)
+
         self.close_app_button = create_button(" Close App", "close.png", "Close the application (Ctrl+Q)",
                                               self.close_application)
 

@@ -20,6 +20,7 @@ from ..playlist.playlist import Playlist, get_default_slide_audio_settings
 from ..utils.paths import get_playlists_path, get_icon_file_path, get_media_file_path
 from .widget_helpers import create_button
 from ..utils.security import is_safe_filename_component
+from .help_window import HelpWindow
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.settings_window_instance = None
         self.text_editor_window_instance = None
         self.audio_program_editor_instance = None
+        self.help_window_instance = None
         try:
             icon_name = "edit.png"
             icon_path = get_icon_file_path(icon_name)
@@ -62,14 +64,14 @@ class PlaylistEditorWindow(QMainWindow):
         self.save_button = create_button(" Save", "save.png", "Save the current playlist", self.save_playlist)
         self.save_as_button = create_button(" Save As...", "save.png", "Save the current playlist under a new name",
                                             self.save_playlist_as)
-
+        self.help_button = create_button(" Help", "help.png", "Open Help", self.open_help_window)
         self.done_button = create_button(" Done", "done.png", "Close the playlist editor", self.close)
         toolbar_layout.addWidget(self.new_button)
         toolbar_layout.addWidget(self.load_button)
         toolbar_layout.addWidget(self.save_button)
         toolbar_layout.addWidget(self.save_as_button)
         toolbar_layout.addStretch()
-
+        toolbar_layout.addWidget(self.help_button)
         toolbar_layout.addWidget(self.done_button)
         main_layout.addLayout(toolbar_layout)
 
@@ -252,6 +254,15 @@ class PlaylistEditorWindow(QMainWindow):
         else:
             self.text_editor_window_instance.activateWindow()
             self.text_editor_window_instance.raise_()
+
+    def open_help_window(self):
+        logger.info("Opening help window for Playlist Editor...")
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="playlist_editor")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def open_audio_program_editor(self):
         logger.info("Opening Audio Program Editor window...")
