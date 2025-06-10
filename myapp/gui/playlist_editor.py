@@ -64,7 +64,7 @@ class PlaylistEditorWindow(QMainWindow):
         self.save_button = create_button(" Save", "save.png", "Save the current playlist", self.save_playlist)
         self.save_as_button = create_button(" Save As...", "save.png", "Save the current playlist under a new name",
                                             self.save_playlist_as)
-        self.help_button = create_button(" Help", "help.png", "Open Help", self.open_help_window)
+        self.help_button = create_button("", "help.png", "Open Help", self.open_help_window)
         self.done_button = create_button(" Done", "done.png", "Close the playlist editor", self.close)
         toolbar_layout.addWidget(self.new_button)
         toolbar_layout.addWidget(self.load_button)

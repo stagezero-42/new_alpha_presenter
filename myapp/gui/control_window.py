@@ -149,10 +149,13 @@ class ControlWindow(QMainWindow):
         top_buttons_layout.addWidget(self.load_button)
         top_buttons_layout.addWidget(self.edit_playlist_button)
         top_buttons_layout.addWidget(self.settings_button)
-        top_buttons_layout.addWidget(self.help_button)
+
+
         top_buttons_layout.addStretch()
+
         top_buttons_layout.addWidget(self.issue_label)
         top_buttons_layout.addWidget(self.issue_icon_widget)
+        top_buttons_layout.addWidget(self.help_button)
         top_buttons_layout.addWidget(self.close_app_button)
         main_layout.addLayout(top_buttons_layout)
 
