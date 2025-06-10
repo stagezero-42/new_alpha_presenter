@@ -9,6 +9,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon
 from ..settings.settings_manager import SettingsManager
 from ..utils.paths import get_icon_file_path
+from .help_window import HelpWindow
+from .widget_helpers import create_button
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,7 @@ class SettingsWindow(QDialog):
         self.setWindowTitle("Application Settings")
         self.settings_manager = SettingsManager()
         self.setMinimumWidth(450)
+        self.help_window_instance = None
 
         # Set window icon
         try:
@@ -67,10 +70,12 @@ class SettingsWindow(QDialog):
         main_layout.addWidget(logging_group)
 
         # --- Buttons ---
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Apply)
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Apply | QDialogButtonBox.StandardButton.Help)
         self.button_box.accepted.connect(self.accept_changes)
         self.button_box.rejected.connect(self.reject)
         self.button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_changes)
+        self.button_box.helpRequested.connect(self.open_help_window)
         main_layout.addWidget(self.button_box)
 
     def load_settings(self):
@@ -117,6 +122,14 @@ class SettingsWindow(QDialog):
             logger.error(f"Error applying settings: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to apply settings: {e}")
             return False
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="settings_window")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def accept_changes(self):
         """Apply changes and close the dialog."""

@@ -68,7 +68,14 @@ class HelpWindow(QDialog):
                 <li><b>Remove Slide:</b> Deletes the currently selected slide.</li>
             </ul>
 
-            <h2 id="keybindings">Default Keybindings</h2>
+           <h2 id="settings_window">Application Settings</h2>
+            <p>This window allows you to configure default paths and keybindings.</p>
+            <ul>
+                <li><b>Default Paths:</b> Set the default folders where the application will look for Playlists, Media (images/videos), and Text files.</li>
+                <li><b>Keybindings:</b> Customize the keyboard shortcuts for various application actions.</li>
+            </ul>
+            <h3 id="keybindings">Default Keybindings</h3>
+            <p>
             <ul>
                 <li><b>Ctrl+L:</b> Load Playlist</li>
                 <li><b>Ctrl+E:</b> Open Playlist Editor</li>
@@ -78,4 +85,5 @@ class HelpWindow(QDialog):
                 <li><b>Spacebar:</b> Next Slide/Sentence</li>
                 <li><b>Escape:</b> Clear Display Screen</li>
             </ul>
+            </p>
         """
