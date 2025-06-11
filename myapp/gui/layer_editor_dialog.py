@@ -23,6 +23,7 @@ from ..utils.schemas import (
     DEFAULT_TEXT_ALIGN, DEFAULT_TEXT_VERTICAL_ALIGN, DEFAULT_FIT_TO_WIDTH,
     DEFAULT_AUDIO_PROGRAM_VOLUME
 )
+from .help_window import HelpWindow
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ class LayerEditorDialog(QDialog):
         self.current_audio_intro_delay_ms = current_audio_intro_delay_ms
         self.current_audio_outro_duration_ms = current_audio_outro_duration_ms
         self.current_audio_program_volume = current_audio_program_volume  # NEW
+
+        self.help_window_instance = None
 
         default_style_base = {
             "font_family": DEFAULT_FONT_FAMILY, "font_size": DEFAULT_FONT_SIZE,
@@ -260,10 +263,12 @@ class LayerEditorDialog(QDialog):
         self.details_tab_widget.addTab(audio_program_tab_content_widget, "Audio Program")
 
         ok_cancel_layout = QHBoxLayout()
+        self.help_button = create_button("", "help.png", "Help for this window", self.open_help_window)
         self.preview_button = create_button(" Preview Slide Images", "preview.png",
                                             on_click=self.preview_slide_on_display_from_editor)
         self.ok_button = create_button("OK", on_click=self.accept_changes)
         self.cancel_button = create_button("Cancel", on_click=self.reject)
+        ok_cancel_layout.addWidget(self.help_button)
         ok_cancel_layout.addWidget(self.preview_button)
         ok_cancel_layout.addStretch()
         ok_cancel_layout.addWidget(self.ok_button)
@@ -271,6 +276,14 @@ class LayerEditorDialog(QDialog):
         main_layout.addLayout(ok_cancel_layout)
 
         logger.debug("LayerEditorDialog UI setup complete with tabs.")
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="slide_details_editor")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def load_text_overlay_ui(self):
         overlay = self.current_text_overlay

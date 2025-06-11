@@ -68,6 +68,48 @@ class HelpWindow(QDialog):
                 <li><b>Remove Slide:</b> Deletes the currently selected slide.</li>
             </ul>
 
+            <h2 id="slide_details_editor">Slide Details Editor (Edit Slide)</h2>
+            <p>This dialog allows you to edit the fine details of an individual slide. It contains three main tabs: Image Layers, Text Overlay, and Audio Program.</p>
+            <h3>Image Layers</h3>
+            <ul>
+                <li><b>Image Layers List:</b> Shows all images that make up the slide background. The bottom image in the list is the bottom layer.</li>
+                <li><b>Add Image(s):</b> Opens a file dialog to select one or more images to add to the top of the layer stack.</li>
+                <li><b>Remove Selected:</b> Removes the selected image from the layers.</li>
+                <li><b>Reorder:</b> Drag and drop image names in the list to change their layering order.</li>
+            </ul>
+            <h3>Text Overlay</h3>
+            <p>This tab controls the text displayed over the slide's images.</p>
+            <ul>
+                <li><b>Paragraph:</b> Select a pre-defined paragraph of text from the dropdown. To create or edit paragraphs, use the "Edit Text" button in the Playlist Editor.</li>
+                <li><b>Start/End Sentence:</b> Choose which sentence(s) from the selected paragraph to display on this slide. Check "Use 'All' Sentences" to display the entire paragraph.</li>
+                <li><b>Enable Sentence Timers:</b> If checked, each sentence will display for its pre-configured duration (set in the Text Editor). If unchecked, you must manually advance sentences with the Next/Prev buttons.</li>
+                <li><b>Auto-Advance to Next Slide:</b> If sentence timers are enabled, checking this will automatically move to the next slide in the playlist after the last sentence has been displayed for its duration.</li>
+                <li><b>Text Style:</b> Customize the font, size, color, background color, transparency, alignment, and position of the text overlay for this slide.</li>
+            </ul>
+            <h3>Audio Program</h3>
+            <p>This tab controls the background audio for the slide.</p>
+            <ul>
+                <li><b>Audio Program:</b> Select a pre-defined audio program from the dropdown. To create or edit audio programs, use the "Edit Audio" button in the Playlist Editor.</li>
+                <li><b>Intro Delay:</b> A delay in milliseconds before the audio program begins to play after the slide is displayed.</li>
+                <li><b>Loop Audio Program:</b> If checked, the selected audio program will repeat as long as this slide is displayed.</li>
+                <li><b>Outro Padding:</b> A delay in milliseconds after the audio program finishes, during which the slide remains displayed before any automatic looping or advancement occurs.</li>
+                <li><b>Program Volume:</b> Adjust the volume of the audio program specifically for this slide.</li>
+            </ul>
+            
+            <h2 id="video_slide_editor">Video Slide Editor</h2>
+            <p>This dialog is for configuring video slides.</p>
+            <ul>
+                <li><b>Video File:</b> Click "Select File" to choose a video file for the slide. The path to the selected video will be displayed.</li>
+                <li><b>Thumbnail:</b> The slide's thumbnail is shown here. By default, a frame from the video is used. Click "Set Custom Thumbnail" to select a different image file to represent the slide in the playlist editor. Click "Clear Custom" to revert to the default video frame thumbnail.</li>
+                <li><b>Playback Options:</b>
+                    <ul>
+                        <li><b>Loop Video:</b> Check this to make the video repeat continuously as long as the slide is active.</li>
+                        <li><b>Mute Video:</b> Check this to play the video without its own audio. This is useful if you are using a separate Audio Program for the slide.</li>
+                        <li><b>Volume:</b> Adjust the video's intrinsic audio volume. This is independent of any separate Audio Program's volume.</li>
+                    </ul>
+                </li>
+            </ul>
+
            <h2 id="settings_window">Application Settings</h2>
             <p>This window allows you to configure default paths and keybindings.</p>
             <ul>

@@ -15,6 +15,7 @@ from .widget_helpers import create_button
 from .file_dialog_helpers import get_themed_open_filename
 from ..utils.paths import get_media_path, get_media_file_path, get_icon_file_path
 from ..utils.security import is_safe_filename_component
+from .help_window import HelpWindow
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class VideoEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Edit Video Slide Details")
         self.setMinimumWidth(600)
-
+        self.help_window_instance = None
         self.slide_data = slide_data or {}
         self.display_window = display_window
         self.media_path = get_media_path()
@@ -108,12 +109,14 @@ class VideoEditorDialog(QDialog):
         main_layout.addWidget(playback_group)
 
         button_layout = QHBoxLayout()
+        self.help_button = create_button("", "help.png", "Help for this window", self.open_help_window)
         self.toggle_display_button = create_button("Show Display", "show_display.png", on_click=self._toggle_display)
         self.play_pause_button = create_button("Preview", "play.png", on_click=self._toggle_preview_playback)
         self.stop_button = create_button("Stop", "stop.png", on_click=self._stop_preview)
         self.ok_button = create_button("OK", on_click=self._handle_ok)
         cancel_button = create_button("Cancel", on_click=self.reject)
 
+        button_layout.addWidget(self.help_button)
         button_layout.addWidget(self.toggle_display_button)
         button_layout.addWidget(self.play_pause_button)
         button_layout.addWidget(self.stop_button)
@@ -121,6 +124,14 @@ class VideoEditorDialog(QDialog):
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(cancel_button)
         main_layout.addLayout(button_layout)
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="video_slide_editor")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def _load_data_to_ui(self):
         if self.slide_data.get("video_path"):
