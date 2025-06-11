@@ -22,7 +22,7 @@ from .text_import_dialog import TextImportDialog
 from .audio_import_dialog import AudioImportDialog
 from .sentence_vo_player_panel import SentenceVOPlayerPanel
 from ..utils.schemas import DEFAULT_VOICE_OVER_VOLUME
-
+from .help_window import HelpWindow
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +33,7 @@ class TextEditorWindow(QMainWindow):
         self.setWindowTitle("Text Paragraph Editor [*]")
         self.setGeometry(150, 150, 900, 850)
         self.setWindowModified(False)
-
+        self.help_window_instance = None
         self.paragraph_manager = ParagraphManager()
         self.track_manager = AudioTrackManager()
         self.paragraphs_cache = {}
@@ -92,14 +92,26 @@ class TextEditorWindow(QMainWindow):
         para_buttons_layout_row1.addWidget(self.rename_para_button)
         left_layout.addLayout(para_buttons_layout_row1)
         para_buttons_layout_row2 = QHBoxLayout()
+        self.help_button = create_button("", "help.png", "Help for this window", self.open_help_window)
         self.duplicate_para_button = create_button("Duplicate", "duplicate.png", "Duplicate Selected Paragraph",
                                                    self.duplicate_paragraph)
         self.del_para_button = create_button("Delete", "remove.png", "Delete Selected Paragraph", self.delete_paragraph)
+
+        para_buttons_layout_row2.addWidget(self.help_button)
+
         para_buttons_layout_row2.addWidget(self.duplicate_para_button)
         para_buttons_layout_row2.addStretch()
         para_buttons_layout_row2.addWidget(self.del_para_button)
         left_layout.addLayout(para_buttons_layout_row2)
         splitter.addWidget(left_widget)
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="text_editor")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def _setup_sentence_panel(self, splitter):
         right_widget = QWidget()

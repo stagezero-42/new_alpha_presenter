@@ -110,6 +110,38 @@ class HelpWindow(QDialog):
                 </li>
             </ul>
 
+    <h2 id="text_editor">Text Paragraph Editor</h2>
+    <p>This window is used to create and manage reusable paragraphs of text, which can be displayed as overlays on slides.</p>
+    <h3>Paragraph Management</h3>
+    <ul>
+        <li><b>Paragraphs List:</b> A list of all available text paragraphs. Select one to edit its content on the right.</li>
+        <li><b>New:</b> Creates a new, empty paragraph. You will be prompted for a name.</li>
+        <li><b>Duplicate:</b> Creates a copy of the selected paragraph with a new name.</li>
+        <li><b>Delete:</b> Deletes the selected paragraph.</li>
+        <li><b>Import:</b> Opens a file dialog to import text from a plain text (.txt) file. Each line in the file will become a sentence.</li>
+        <li><b>Save:</b> Saves any changes made to the currently selected paragraph.</li>
+    </ul>
+    <h3>Sentence Management</h3>
+    <p>Once a paragraph is selected, you can manage its individual sentences.</p>
+    <ul>
+        <li><b>Sentences List:</b> Shows all sentences in the selected paragraph. You can drag and drop sentences to reorder them.</li>
+        <li><b>Add Sentence:</b> Adds a new, empty sentence to the end of the list.</li>
+        <li><b>Remove Selected Sentence:</b> Deletes the currently selected sentence.</li>
+    </ul>
+    <h3>Editing a Sentence</h3>
+    <ul>
+        <li><b>Text:</b> The text content of the sentence.</li>
+        <li><b>Timed Duration (s):</b> The number of seconds the sentence should be displayed if "Enable Sentence Timers" is checked on a slide. A duration of 0 means it will require a manual 'Next' action to advance.</li>
+        <li><b>Voice-over:</b>
+            <ul>
+                <li><b>Select VO:</b> Opens a file dialog to associate an audio file (e.g., .mp3, .wav) with the sentence.</li>
+                <li><b>Play/Stop:</b> Plays or stops the currently associated voice-over audio file.</li>
+                <li><b>Clear:</b> Removes the voice-over association from the sentence.</li>
+            </ul>
+        </li>
+    </ul>
+
+
            <h2 id="settings_window">Application Settings</h2>
             <p>This window allows you to configure default paths and keybindings.</p>
             <ul>
