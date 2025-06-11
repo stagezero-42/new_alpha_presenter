@@ -118,7 +118,8 @@ class HelpWindow(QDialog):
         <li><b>New:</b> Creates a new, empty paragraph. You will be prompted for a name.</li>
         <li><b>Duplicate:</b> Creates a copy of the selected paragraph with a new name.</li>
         <li><b>Delete:</b> Deletes the selected paragraph.</li>
-        <li><b>Import:</b> Opens a file dialog to import text from a plain text (.txt) file. Each line in the file will become a sentence.</li>
+        <li><b>Import:</b> Opens the 'Import Text File' window, which helps you create a new paragraph from a plain text (.txt) file. 
+        For more details, see the help topic on the <a href="#text_import_dialog">Import Text File Window</a>.</li>
         <li><b>Save:</b> Saves any changes made to the currently selected paragraph.</li>
     </ul>
     <h3>Sentence Management</h3>
@@ -140,24 +141,36 @@ class HelpWindow(QDialog):
             </ul>
         </li>
     </ul>
+    <h3 id="text_import_dialog">Import Text File Window</h3>
+        <p>This window helps you import content from a plain text (.txt) file into a new paragraph.</p>
+        <ul>
+            <li><b>New Paragraph Name:</b> You must provide a unique name for the new paragraph that will be created.</li>
+            <li><b>File to Import:</b> Click "Browse..." to select the .txt file you wish to import.</li>
+            <li><b>Sentence Splitting:</b> Choose how the application should divide the text file into individual sentences.
+                <ul>
+                    <li><b>Split by line:</b> Each line in the text file will become a new sentence. This is ideal for simple lists or pre-formatted text.</li>
+                    <li><b>Split by sentence:</b> The application will look for punctuation (., ?, !) to determine the end of a sentence. This is useful for importing prose from a file that doesn't have one sentence per line.</li>
+                </ul>
+            </li>
+        </ul>
+        <p>After clicking "OK", the new paragraph will be created and will appear in the main "Paragraphs" list in the Text Paragraph Editor.</p>
 
-
-           <h2 id="settings_window">Application Settings</h2>
-            <p>This window allows you to configure default paths and keybindings.</p>
-            <ul>
-                <li><b>Default Paths:</b> Set the default folders where the application will look for Playlists, Media (images/videos), and Text files.</li>
-                <li><b>Keybindings:</b> Customize the keyboard shortcuts for various application actions.</li>
-            </ul>
-            <h3 id="keybindings">Default Keybindings</h3>
-            <p>
-            <ul>
-                <li><b>Ctrl+L:</b> Load Playlist</li>
-                <li><b>Ctrl+E:</b> Open Playlist Editor</li>
-                <li><b>Ctrl+Q:</b> Quit Application</li>
-                <li><b>Left Arrow:</b> Previous Slide/Sentence</li>
-                <li><b>Right Arrow:</b> Next Slide/Sentence</li>
-                <li><b>Spacebar:</b> Next Slide/Sentence</li>
-                <li><b>Escape:</b> Clear Display Screen</li>
-            </ul>
-            </p>
+   <h2 id="settings_window">Application Settings</h2>
+    <p>This window allows you to configure default paths and keybindings.</p>
+    <ul>
+        <li><b>Default Paths:</b> Set the default folders where the application will look for Playlists, Media (images/videos), and Text files.</li>
+        <li><b>Keybindings:</b> Customize the keyboard shortcuts for various application actions.</li>
+    </ul>
+        <h3 id="keybindings">Default Keybindings</h3>
+        <p>
+        <ul>
+            <li><b>Ctrl+L:</b> Load Playlist</li>
+            <li><b>Ctrl+E:</b> Open Playlist Editor</li>
+            <li><b>Ctrl+Q:</b> Quit Application</li>
+            <li><b>Left Arrow:</b> Previous Slide/Sentence</li>
+            <li><b>Right Arrow:</b> Next Slide/Sentence</li>
+            <li><b>Spacebar:</b> Next Slide/Sentence</li>
+            <li><b>Escape:</b> Clear Display Screen</li>
+        </ul>
+        </p>
         """

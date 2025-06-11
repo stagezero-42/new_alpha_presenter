@@ -14,6 +14,7 @@ from ..text.paragraph_manager import ParagraphManager
 from ..utils.paths import get_icon_file_path, get_texts_path
 from ..utils.security import is_safe_filename_component
 from .widget_helpers import create_button  # Assuming this is still preferred
+from .help_window import HelpWindow
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class TextImportDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Import Text File")
         self.setMinimumSize(500, 400)
+        self.help_window_instance = None
 
         if paragraph_manager is None:
             # Fallback, though it should always be provided
@@ -94,11 +96,22 @@ class TextImportDialog(QDialog):
         # Action Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
+        help_button = create_button("Help", "help.png", on_click=self.open_help_window)
         import_button = create_button("Import", "import.png", on_click=self._handle_import)
-        cancel_button = create_button("Cancel", on_click=self.reject)
+        cancel_button = create_button("Cancel", "done.png",on_click=self.reject)
+
+        button_layout.addWidget(help_button)
         button_layout.addWidget(import_button)
         button_layout.addWidget(cancel_button)
         main_layout.addLayout(button_layout)
+
+    def open_help_window(self):
+        if self.help_window_instance is None or not self.help_window_instance.isVisible():
+            self.help_window_instance = HelpWindow(self, anchor="text_import_dialog")
+            self.help_window_instance.show()
+        else:
+            self.help_window_instance.activateWindow()
+            self.help_window_instance.raise_()
 
     def _update_preview_and_help(self, format_name_key):
         format_short = self.IMPORT_FORMATS.get(format_name_key, "txt")
