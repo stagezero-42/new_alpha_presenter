@@ -146,20 +146,30 @@ class LayerEditorDialog(QDialog):
 
         main_layout.addWidget(layers_group)
 
+
         timing_loop_group = QGroupBox("Slide Timing & Looping")
         timing_loop_layout = QFormLayout(timing_loop_group)
-        self.duration_label = QLabel("Initial Text Delay / Slide Duration (s):")
+
+        # We will set the specific text for this label dynamically later
+        self.duration_label = QLabel()
         self.duration_spinbox = QSpinBox()
         self.duration_spinbox.setRange(0, 3600)
         self.duration_spinbox.setSuffix(" s")
-        self.duration_spinbox.setToolTip(
-            "Duration for slide auto-advance, or initial delay before timed text starts. Audio plays independently.")
+        # Set a fixed width to ensure horizontal alignment
+        self.duration_spinbox.setMaximumWidth(120)
         timing_loop_layout.addRow(self.duration_label, self.duration_spinbox)
-        loop_label = QLabel("After duration, loop to slide # (1-based, 0 for none):")
+
+        # CHANGE 1: Shorten the label text
+        loop_label = QLabel("Loop To:")
         self.loop_target_spinbox = QSpinBox()
         self.loop_target_spinbox.setRange(0, 999)
+        # CHANGE 2: Add the old label text as a tooltip
+        self.loop_target_spinbox.setToolTip("After duration, loop to slide\n # (1-based, 0 for none):")
+        # CHANGE 3: Set a fixed width to ensure horizontal alignment
+        self.loop_target_spinbox.setMaximumWidth(120)
         timing_loop_layout.addRow(loop_label, self.loop_target_spinbox)
         main_layout.addWidget(timing_loop_group)
+
 
         self.details_tab_widget = QTabWidget()
         main_layout.addWidget(self.details_tab_widget)
@@ -379,7 +389,8 @@ class LayerEditorDialog(QDialog):
         self.fit_to_width_check.setEnabled(style_fields_enabled)
 
         if paragraph_genuinely_selected:
-            self.duration_label.setText("Initial Text Delay (s, 0 for none):")
+            self.duration_label.setText("Text Delay:")
+            self.duration_spinbox.setToolTip("Initial Text Delay (s, 0 for none): \nThe delay before timed text begins.")
             try:
                 loaded_para = self.paragraph_manager.load_paragraph(selected_paragraph_data)
                 if loaded_para:
@@ -391,7 +402,9 @@ class LayerEditorDialog(QDialog):
                 self.start_sentence_spinbox.setMaximum(1);
                 self.end_sentence_spinbox.setMaximum(1)
         else:
-            self.duration_label.setText("Slide Duration (s, 0 for manual):")
+            self.duration_label.setText("Slide Duration:")
+            self.duration_spinbox.setToolTip(
+                "Slide Duration (s, 0 for manual): \nThe time before the slide auto-advances.")
             self.start_sentence_spinbox.setMaximum(999);
             self.end_sentence_spinbox.setMaximum(999)
             self.start_sentence_spinbox.setValue(1);
