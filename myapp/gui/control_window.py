@@ -328,9 +328,11 @@ class ControlWindow(QMainWindow):
                     self.slide_timer.start(initial_delay_for_text)
                 else:
                     self.text_controller.show_first_sentence()
-            elif not audio_config_to_pass["audio_program_name"]:
+            else: # If there is no text overlay
                 slide_duration = slide_data.get("duration", 0)
                 if slide_duration > 0:
+                    # This will now start the timer for slides with audio but no text,
+                    # or slides with neither audio nor text.
                     self.slide_timer.start(slide_duration)
 
         self.ui_updater.update_all()
