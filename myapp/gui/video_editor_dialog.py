@@ -196,7 +196,7 @@ class VideoEditorDialog(QDialog):
         if not is_loaded:
             self.display_window.clear_display()
             self.display_window.set_volume(self.volume_slider.value() / 100.0)
-            self.display_window.display_video(os.path.basename(self.selected_video_path))
+            self.display_window.display_video(self.selected_video_path)
             self.display_window.play_video()
         else:
             if self.display_window.get_playback_state() == QMediaPlayer.PlaybackState.PlayingState:

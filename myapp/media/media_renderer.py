@@ -116,14 +116,24 @@ class MediaRenderer(QMainWindow):
             self.current_text = None
             self.current_style_options = {}
 
-    def display_video(self, video_filename):
-        logger.debug(f"Displaying video: {video_filename}")
+    def display_video(self, video_path):
+        logger.debug(f"Displaying video: {video_path}")
         self._play_request_pending = False
-        self.current_video_path = get_media_file_path(video_filename)
-        if not os.path.exists(self.current_video_path):
-            logger.error(f"Video file not found: {self.current_video_path}")
+
+        # Check if the provided path is absolute. If not, treat it as a filename
+        # relative to the media directory.
+        if os.path.isabs(video_path):
+            path_to_play = video_path
+        else:
+            path_to_play = get_media_file_path(video_path)
+
+        if not os.path.exists(path_to_play):
+            logger.error(f"Video file not found: {path_to_play}")
+            self.current_video_path = None
+            self.media_player.setSource(QUrl()) # Clear the source
             return
 
+        self.current_video_path = path_to_play
         self.video_item.setVisible(True)
         self.media_player.setSource(QUrl.fromLocalFile(self.current_video_path))
         self.resizeEvent(None)
