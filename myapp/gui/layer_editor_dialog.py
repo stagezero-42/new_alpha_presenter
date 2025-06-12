@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton,
     QMessageBox, QAbstractItemView, QListWidgetItem,
     QLabel, QSpinBox, QFrame, QComboBox, QCheckBox, QFormLayout, QGroupBox,
-    QFontComboBox, QColorDialog, QSlider, QTabWidget, QWidget
+    QFontComboBox, QColorDialog, QSlider, QTabWidget, QWidget, QSizePolicy
 )
 from PySide6.QtGui import QIcon, QFont, QColor, QPalette
 from PySide6.QtCore import Qt
@@ -125,18 +125,25 @@ class LayerEditorDialog(QDialog):
         logger.debug("Setting up LayerEditorDialog UI with tabs...")
         main_layout = QVBoxLayout(self)
 
-        layers_group = QGroupBox("Image Layers")
-        layers_layout = QVBoxLayout(layers_group)
-        layers_layout.addWidget(QLabel("Image Layers (drag to reorder):"))
+
+        layers_group = QGroupBox("Image Layers (drag to reorder):")
+
+        layers_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+
+        layers_group_layout = QHBoxLayout(layers_group)
         self.layers_list_widget = QListWidget()
         self.layers_list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        layers_layout.addWidget(self.layers_list_widget)
-        layers_buttons_layout = QHBoxLayout()
-        self.add_layer_button = create_button(" Add Image(s)", "add.png", on_click=self.add_layers)
-        self.remove_layer_button = create_button(" Remove Selected", "remove.png", on_click=self.remove_layer)
-        layers_buttons_layout.addWidget(self.add_layer_button)
-        layers_buttons_layout.addWidget(self.remove_layer_button)
-        layers_layout.addLayout(layers_buttons_layout)
+        self.layers_list_widget.setMaximumHeight(100)
+        buttons_v_layout = QVBoxLayout()
+        self.add_layer_button = create_button(" Add", "add.png", on_click=self.add_layers)
+        self.remove_layer_button = create_button(" Remove", "remove.png", on_click=self.remove_layer)
+        buttons_v_layout.addWidget(self.add_layer_button)
+        buttons_v_layout.addWidget(self.remove_layer_button)
+        layers_group_layout.addWidget(self.layers_list_widget)
+        layers_group_layout.addLayout(buttons_v_layout)
+        layers_group_layout.setStretchFactor(self.layers_list_widget, 3)
+        layers_group_layout.setStretchFactor(buttons_v_layout, 1)
+
         main_layout.addWidget(layers_group)
 
         timing_loop_group = QGroupBox("Slide Timing & Looping")
